@@ -13,7 +13,6 @@ import java.util.logging.Logger;
 
 public class writeOutput {
 
-
     public static Path getRelativePath(String fileName) {
         try {
             URI jarUri = writeOutput.class.getProtectionDomain().getCodeSource().getLocation().toURI();
@@ -48,20 +47,20 @@ public class writeOutput {
 
         try (CSVWriter writer = new CSVWriter(new FileWriter(savedData, true))) {
             if (newFile) {
-                String[] header = { "Name", "Time", "Link", "Rating"};
+                String[] header = { "Name", "Time", "Link", "Rating" };
                 writer.writeNext(header);
             }
-            
+
             for (getCAF.AthleteRating rating : ratings) {
                 String[] payload = {
-                    rating.name(),
-                    rating.time(),
-                    rating.link(),
-                    String.valueOf(rating.rating())
+                        rating.name(),
+                        rating.time(),
+                        rating.link(),
+                        String.valueOf(rating.rating())
                 };
                 writer.writeNext(payload);
             }
-            
+
             System.out.println("CSV saved successfully");
             success = true;
         } catch (IOException e) {
@@ -70,4 +69,52 @@ public class writeOutput {
         return success;
     }
 
-}
+    /**
+     * Generic CSV write method: appends rows to a named CSV file with a custom
+     * header.
+     * Reuses the same file-path resolution and CSVWriter pattern as the original
+     * write().
+     *
+     * @param fileName the CSV filename (resolved relative to JAR/classes location)
+     * @param header   column headers (written only if the file is new/empty)
+     * @param rows     data rows to append
+     * @return number of rows successfully written
+     */
+    public int writeRows(String fileName, String[] header, List<String[]> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return 0;
+        }
+
+        Path csvPath = getRelativePath(fileName);
+        File savedData = csvPath.toFile();
+        boolean newFile = false;
+
+        try {
+            if (savedData.getParentFile() != null) {
+                savedData.getParentFile().mkdirs();
+            }
+            if (savedData.createNewFile()) {
+                newFile = true;
+            }
+        } catch (IOException e) {
+            System.out.println("An error occurred while creating CSV file (" + fileName + "): " + e);
+            return 0;
+        }
+
+        try (CSVWriter writer = new CSVWriter(new FileWriter(savedData, true))) {
+            if (newFile && header != null) {
+                writer.writeNext(header);
+            }
+
+            for (String[] row : rows) {
+                writer.writeNext(row);
+            }
+
+            return rows.size();
+        } catch (IOException e) {
+            System.out.println("Failed to write data to CSV file (" + fileName + "): " + e);
+            return 0;
+        }
+    }
+
+}

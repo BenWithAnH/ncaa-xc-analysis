@@ -8,7 +8,7 @@ import java.util.stream.Collectors;
 import com.example.parseRace.Athlete;
 import org.jsoup.nodes.Document;
 
-    // Todo: save the ratings to an output file, error handling, maybe implement a
+    // error handling, maybe implement a
     // big scraper part (every meet in a given list)
 
 import java.util.ArrayList;
@@ -64,7 +64,7 @@ public class getCAF {
             
             if (actualTime > 0.0) {
                 double adjustedTime = actualTime / this.lastCaf;
-                double rating = adjustedTime / RATING_DIVISOR;
+                double rating = calculateRacePoints(actualTime, this.lastCaf, raceDistanceMeters, raceDistanceMeters, "M", fatigueCoefficient);
                 
                 // Instantiate the record and add it directly to the ArrayList
                 athleteRatingsList.add(new AthleteRating(athlete.name(), athlete.time(), athlete.link(), rating));
