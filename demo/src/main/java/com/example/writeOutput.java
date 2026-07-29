@@ -47,8 +47,7 @@ public class writeOutput {
 
         try (CSVWriter writer = new CSVWriter(new FileWriter(savedData, true))) {
             if (newFile) {
-                String[] header = { "Ticker:", "Insider Name:", "Owner Type:", "Date:", "Code:", "Shares:",
-                        "Price/Share:", "Context/Summary:" };
+                String[] header = { "Name:", "Time:", "Link:", "Rating:"};
                 writer.writeNext(header);
             }
             writer.writeNext(payload);
