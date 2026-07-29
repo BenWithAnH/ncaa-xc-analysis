@@ -18,15 +18,16 @@ public class getCAF {
     List<Double> ratings = Collections.synchronizedList(new ArrayList<>());
     public double lastCaf = 1.0;
 
-    public Map<String, Double> getCAF(List<Athlete> athletes, double raceDistanceMeters) {
+    public ArrayList<ArrayList<Object>> getCAF(List<Athlete> athletes, double raceDistanceMeters) {
         return getCAF(athletes, raceDistanceMeters, 1.06);
     }
 
-    public Map<String, Double> getCAF(List<Athlete> athletes, double raceDistanceMeters, double fatigueCoefficient) {
+    public ArrayList<ArrayList<Object>> getCAF(List<Athlete> athletes, double raceDistanceMeters,
+            double fatigueCoefficient) {
         ratings.clear();
 
         if (athletes == null || athletes.isEmpty()) {
-            return new LinkedHashMap<>();
+            return new ArrayList<>();
         }
 
         scrapePriors scraper = new scrapePriors();
@@ -93,17 +94,22 @@ public class getCAF {
         }
         this.lastCaf = caf;
 
-        Map<String, Double> athleteRatings = new LinkedHashMap<>();
+        ArrayList<ArrayList<Object>> athleteRatingsList = new ArrayList<>();
         for (Athlete athlete : athletes) {
             double actualTime = priors.parseTimeToSeconds(athlete.time());
             if (actualTime > 0.0) {
                 double adjustedTime = actualTime / caf;
                 double rating = adjustedTime / 10.0;
-                athleteRatings.put(athlete.name(), rating);
+                ArrayList<Object> athleteInfo = new ArrayList<>();
+                athleteInfo.add(athlete.name());
+                athleteInfo.add(athlete.time());
+                athleteInfo.add(athlete.link());
+                athleteInfo.add(rating);
+                athleteRatingsList.add(athleteInfo);
             }
         }
 
-        return athleteRatings;
+        return athleteRatingsList;
     }
 
     public double calculateRacePoints(double actualTime, double caf, double xcDistanceMeters,
@@ -119,7 +125,6 @@ public class getCAF {
         return BASE_SCORE * Math.pow(trackBaselineSeconds / equivalentTrackTime, 1.0 / ratingCurveExponent);
     }
 
-    
     private double getBaselineSeconds(double distanceMeters, String gender) {
         boolean isMale = gender.equalsIgnoreCase("M") || gender.equalsIgnoreCase("men");
         boolean isFemale = gender.equalsIgnoreCase("F") || gender.equalsIgnoreCase("women");
@@ -149,9 +154,13 @@ public class getCAF {
                 System.out.println("  Name: " + a.name() + ", Time: " + a.time() + ", Link: " + a.link());
             }
             getCAF g = new getCAF();
-            Map<String, Double> athleteRatings = g.getCAF(subList, 8000);
+            ArrayList<ArrayList<Object>> athleteRatings = g.getCAF(subList, 8000);
             System.out.println("Calculated CAF: " + g.lastCaf);
-            System.out.println("Athlete Ratings: " + athleteRatings);
+            System.out.println("Athlete Ratings:");
+            for (ArrayList<Object> row : athleteRatings) {
+                System.out.println("  Name: " + row.get(0) + ", Time: " + row.get(1) + ", Link: " + row.get(2)
+                        + ", Rating: " + row.get(3));
+            }
             System.out.println("Stored Prior Ratings: " + g.ratings); // best track rating using point system
         } else {
             System.out.println("Failed to parse athletes from race.");
