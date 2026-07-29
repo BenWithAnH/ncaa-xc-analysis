@@ -119,9 +119,7 @@ public class getCAF {
         return BASE_SCORE * Math.pow(trackBaselineSeconds / equivalentTrackTime, 1.0 / ratingCurveExponent);
     }
 
-    /**
-     * Replaces the hardcoded 1500 seconds with dynamic distance baselines.
-     */
+    
     private double getBaselineSeconds(double distanceMeters, String gender) {
         boolean isMale = gender.equalsIgnoreCase("M") || gender.equalsIgnoreCase("men");
         boolean isFemale = gender.equalsIgnoreCase("F") || gender.equalsIgnoreCase("women");
