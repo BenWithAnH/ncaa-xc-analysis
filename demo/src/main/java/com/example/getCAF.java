@@ -5,8 +5,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
-import java.util.Map;
-import java.util.LinkedHashMap;
 import com.example.parseRace.Athlete;
 import org.jsoup.nodes.Document;
 
@@ -29,18 +27,13 @@ public class getCAF {
     private static final double RATING_DIVISOR = 10.0;
     private static final int RATE_LIMIT_MS = 50;
 
-    // 2. RECORD DEFINITION
-    // Records are immutable data carriers that automatically generate getters, equals(), and toString()
+
     public record AthleteRating(String name, String time, String link, double rating) {}
 
-    // 3. STATE
     public final List<Double> ratings = Collections.synchronizedList(new ArrayList<>());
     public double lastCaf = 1.0;
 
-    public ArrayList<AthleteRating> getCAF(List<Athlete> athletes, double raceDistanceMeters) {
-        return getCAF(athletes, raceDistanceMeters, DEFAULT_FATIGUE_COEFFICIENT);
-    }
-
+ 
     public ArrayList<AthleteRating> getCAF(List<Athlete> athletes, double raceDistanceMeters, double fatigueCoefficient) {
         ratings.clear();
 
@@ -150,7 +143,8 @@ public class getCAF {
     private double getBaselineSeconds(double distanceMeters, String gender) {
         boolean isMale = gender.equalsIgnoreCase("M") || gender.equalsIgnoreCase("men");
         boolean isFemale = gender.equalsIgnoreCase("F") || gender.equalsIgnoreCase("women");
-        
+
+        //baseline race times (in seconds)
         if (isMale && distanceMeters == 8000.0) return 1440.0;   
         if (isFemale && distanceMeters == 6000.0) return 1260.0; 
         if (isMale && distanceMeters == 10000.0) return 1800.0;  
@@ -161,6 +155,6 @@ public class getCAF {
 
 
     public static void main(String[] args) {
-        
+
     }
 }

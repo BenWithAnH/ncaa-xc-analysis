@@ -162,33 +162,6 @@ public class scrapePriors {
     }
 
     public static void main(String[] args) {
-        scrapePriors s = new scrapePriors();
-        priors p = new priors();
-
-        // Test Male Athlete
-        String nameMale = "Behn Thomas";
-        String outMale = s.getID(nameMale);
-        if (!outMale.isEmpty()) {
-            System.out.println("Athlete: " + nameMale + " (" + outMale + ")");
-            String gender = s.getGender(outMale);
-            System.out.println("Detected Gender: " + gender);
-            ArrayList<String> prs = s.getPRs(outMale);
-            p.findBest(prs, gender);
-        } else {
-            System.out.println("Could not find athlete ID for: " + nameMale);
-        }
-
-        // Test Female Athlete
-        String nameFemale = "Katelyn Tuohy";
-        String outFemale = s.getID(nameFemale);
-        if (!outFemale.isEmpty()) {
-            System.out.println("\nAthlete: " + nameFemale + " (" + outFemale + ")");
-            String gender = s.getGender(outFemale);
-            System.out.println("Detected Gender: " + gender);
-            ArrayList<String> prs = s.getPRs(outFemale);
-            p.findBest(prs, gender);
-        } else {
-            System.out.println("Could not find athlete ID for: " + nameFemale);
-        }
+        
     }
 }
