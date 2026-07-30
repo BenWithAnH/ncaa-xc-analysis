@@ -1,10 +1,8 @@
 com\example\getCAF$AthleteRating.class
 com\example\priors.class
-com\example\parseRace.class
 com\example\priors$1.class
 com\example\writeOutput.class
 com\example\getCAF.class
-com\example\parseRace$Athlete.class
 com\example\MeetScraper.class
 com\example\BulkRunner.class
 com\example\MeetScraper$MeetInfo.class

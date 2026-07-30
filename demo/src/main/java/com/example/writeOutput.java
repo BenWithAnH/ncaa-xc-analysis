@@ -8,8 +8,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.net.URI;
 import java.util.List;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 public class writeOutput {
 
@@ -69,17 +67,6 @@ public class writeOutput {
         return success;
     }
 
-    /**
-     * Generic CSV write method: appends rows to a named CSV file with a custom
-     * header.
-     * Reuses the same file-path resolution and CSVWriter pattern as the original
-     * write().
-     *
-     * @param fileName the CSV filename (resolved relative to JAR/classes location)
-     * @param header   column headers (written only if the file is new/empty)
-     * @param rows     data rows to append
-     * @return number of rows successfully written
-     */
     public int writeRows(String fileName, String[] header, List<String[]> rows) {
         if (rows == null || rows.isEmpty()) {
             return 0;

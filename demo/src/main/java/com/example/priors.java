@@ -21,10 +21,7 @@ public class priors {
             "5000m",
             "10000m");
 
-    /**
-     * Converts a time string (e.g. "1:56.54" or "31:25.74") to total seconds.
-     * Returns 0.0 if the time is invalid, empty, or not run.
-     */
+
     public static double parseTimeToSeconds(String timeStr) {
         if (timeStr == null || timeStr.trim().isEmpty()) {
             return 0.0;
@@ -50,14 +47,12 @@ public class priors {
                 return Double.parseDouble(clean);
             }
         } catch (NumberFormatException e) {
-            // Log or ignore and return 0.0
+            //log?
         }
         return 0.0;
     }
 
-    /**
-     * Finds the coefficients file in the project.
-     */
+
     private static File findCoefficientsFile() {
         String[] paths = {
                 "src/main/iaaf-scoring-tables-master/iaaf-scoring-tables-master/coefficients-2025.json",
@@ -71,7 +66,7 @@ public class priors {
                 return f;
             }
         }
-        // Recursive fallback search
+
         File projectDir = new File(".");
         File found = searchFile(projectDir, "coefficients-2025.json");
         if (found != null) {
@@ -102,10 +97,7 @@ public class priors {
         return null;
     }
 
-    /**
-     * Calculates IAAF points using the quadratic formula: points = a * mark^2 + b *
-     * mark + c
-     */
+
     public static long calculatePoints(double seconds, List<Double> coefs) {
         if (seconds <= 0.0 || coefs == null || coefs.size() < 3) {
             return 0;
@@ -119,13 +111,11 @@ public class priors {
         return Math.max(0, points);
     }
 
-    /**
-     * Calculates points for the given PRs and a specific gender.
-     */
+
     public void findBest(ArrayList<String> prs, String gender) {
         File coeffFile = findCoefficientsFile();
         if (coeffFile == null) {
-            System.err.println("Error: coefficients-2025.json file not found.");
+            System.err.println("coef file not found.");
             return;
         }
 
@@ -137,15 +127,8 @@ public class priors {
 
             Map<String, List<Double>> genderCoefs = coefficients.get(gender.toLowerCase());
             if (genderCoefs == null) {
-                System.err.println("Error: Gender '" + gender + "' not found in coefficients.");
                 return;
             }
-
-            System.out.println("\n--------------------------------------------------------------");
-            System.out.println(" IAAF Points for " + gender.toUpperCase() + "'s Events:");
-            System.out.println("--------------------------------------------------------------");
-            System.out.printf(" %-12s | %-12s | %-12s | %-12s\n", "Event", "Mark", "Seconds", "IAAF Points");
-            System.out.println("--------------------------------------------------------------");
 
             String bestEvent = "N/A";
             long maxPoints = -1;
@@ -159,43 +142,27 @@ public class priors {
                 if (seconds > 0) {
                     List<Double> coefs = genderCoefs.get(eventName);
                     long points = calculatePoints(seconds, coefs);
-                    System.out.printf(" %-12s | %-12s | %-12.2f | %-12d\n", eventName, mark, seconds, points);
 
                     if (points > maxPoints) {
                         maxPoints = points;
                         bestEvent = eventName;
                         bestMark = mark;
                     }
-                } else {
-                    System.out.printf(" %-12s | %-12s | %-12s | %-12s\n", eventName, (mark == null ? "N/A" : mark),
-                            "N/A", "N/A");
-                }
             }
-            System.out.println("--------------------------------------------------------------");
-            if (maxPoints >= 0) {
-                System.out.printf(" Best Performance: %s in %s (%d points)\n", bestMark, bestEvent, maxPoints);
-            } else {
-                System.out.println(" No valid performances found.");
-            }
-            System.out.println("--------------------------------------------------------------");
 
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    /**
-     * Calculates and returns the highest IAAF points value across the athlete's
-     * events
-     * as the prior rating.
-     */
+
     public double getPriorRating(ArrayList<String> prs, String gender) {
         if (prs == null || prs.isEmpty() || gender == null) {
             return 0.0;
         }
         File coeffFile = findCoefficientsFile();
         if (coeffFile == null) {
-            System.err.println("Error: coefficients-2025.json file not found.");
+            System.err.println("coef file not found.");
             return 0.0;
         }
 
@@ -207,7 +174,6 @@ public class priors {
 
             Map<String, List<Double>> genderCoefs = coefficients.get(gender.toLowerCase());
             if (genderCoefs == null) {
-                System.err.println("Error: Gender '" + gender + "' not found in coefficients.");
                 return 0.0;
             }
 

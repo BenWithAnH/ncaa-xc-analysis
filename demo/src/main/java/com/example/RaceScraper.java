@@ -13,14 +13,119 @@ import org.jsoup.select.Elements;
  * Scrapes individual meet pages to extract men's XC race results.
  * Finds the men's individual results table and extracts athlete name, time, and
  * profile link.
- * 
- * Delegates column/link extraction to the existing parseRace class.
+ *
+ * Also provides general-purpose table-parsing utilities (getColumn,
+ * getAthleteLink) that were formerly in parseRace.
  */
 public class RaceScraper {
 
     private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
     private static final int TIMEOUT_MS = 15000;
     private static final int MEET_DELAY_MS = 2000; // 2s delay before fetching
+
+    // --- Athlete record (moved from parseRace) ---
+
+    public record Athlete(String name, String time, String link) {
+    }
+
+    // --- Table-parsing state and helpers (moved from parseRace) ---
+
+    private int nameIndex = -1;
+
+    /**
+     * Extracts all values from a named column in an HTML table.
+     * The first row is assumed to be the header row.
+     */
+    public List<String> getColumn(Element el, String rowName) {
+        List<String> columnValues = new ArrayList<>();
+        Element headerRow = el.selectFirst("tr");
+        int colIndex = -1;
+        if (headerRow != null) {
+            Elements headers = headerRow.select("th, td");
+            for (int i = 0; i < headers.size(); i++) {
+                if (headers.get(i).text().equalsIgnoreCase(rowName)) {
+                    colIndex = i; // Store 0-based index
+                    if (rowName.equals("Name"))
+                        nameIndex = i;
+                    break;
+                }
+            }
+        }
+        if (colIndex != -1) {
+            Elements rows = el.select("tr");
+            for (int i = 1; i < rows.size(); i++) {
+                Element row = rows.get(i);
+                Elements cells = row.select("th, td");
+                // Ensure the row has enough columns (handles empty or irregular rows)
+                if (cells.size() > colIndex) {
+                    columnValues.add(cells.get(colIndex).text());
+                }
+            }
+        }
+        return columnValues;
+    }
+
+    /**
+     * Extracts athlete profile links from the Name column of an HTML table.
+     * Must be called after getColumn(el, "Name") so that nameIndex is set.
+     */
+    public List<String> getAthleteLink(Element el) {
+        List<String> links = new ArrayList<>();
+        if (nameIndex != -1) {
+            Elements rows = el.select("tr");
+            for (int i = 1; i < rows.size(); i++) {
+                Element row = rows.get(i);
+                Elements cells = row.select("th, td");
+                if (cells.size() > nameIndex) {
+                    Element nameCell = cells.get(nameIndex);
+                    Element link = nameCell.selectFirst("a");
+                    if (link != null) {
+                        String url = link.absUrl("href").replaceAll("\\s+", "");
+                        links.add(url);
+                    } else {
+                        links.add(""); // Keep alignment
+                    }
+                }
+            }
+        }
+        return links;
+    }
+
+    // --- Simple race scraper (moved from parseRace.getCAF) ---
+
+    /**
+     * Fetches a race results page and extracts all athletes from the first
+     * table containing a "Year" column. This is a simpler alternative to
+     * scrapeMensRace() that doesn't filter for men's CC events specifically.
+     *
+     * @param raceLink full URL to the race results page
+     * @return list of Athlete records, or null on failure
+     */
+    public List<Athlete> scrapeRace(String raceLink) {
+        try {
+            Document doc = Jsoup.connect(raceLink)
+                    .get();
+
+            Element el = doc.selectFirst("table:contains(Year)");
+            List<String> names = getColumn(el, "Name");
+            List<String> times = getColumn(el, "Time");
+            List<String> links = getAthleteLink(el);
+            List<Athlete> athletes = new ArrayList<>();
+            int limit = Math.min(names.size(), Math.min(times.size(), links.size()));
+            for (int i = 0; i < limit; i++) {
+                athletes.add(new Athlete(names.get(i), times.get(i), links.get(i)));
+            }
+
+            return athletes;
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return null;
+    }
+
+    // --- Men's XC-specific scraper ---
 
     /**
      * Scrapes the men's individual race results from a TFRRS XC meet page.
@@ -29,8 +134,8 @@ public class RaceScraper {
      * @return list of Athlete records with name, time, and profile link; empty list
      *         on failure
      */
-    public List<parseRace.Athlete> scrapeMensRace(String meetUrl) {
-        List<parseRace.Athlete> athletes = new ArrayList<>();
+    public List<Athlete> scrapeMensRace(String meetUrl) {
+        List<Athlete> athletes = new ArrayList<>();
 
         try {
             // Rate limit
@@ -118,7 +223,7 @@ public class RaceScraper {
                 return athletes;
             }
 
-            // Use existing parseRace logic to extract columns and links from the table
+            // Extract athletes from the table using local helpers
             athletes = extractAthletesFromTable(mensIndividualTable);
 
             if (!eventName.isEmpty()) {
@@ -186,19 +291,16 @@ public class RaceScraper {
     }
 
     /**
-     * Extracts athletes from a results table using the existing parseRace
-     * getColumn() and getAthleteLink() methods — avoids reimplementing
-     * column-finding and link-extraction logic.
+     * Extracts athletes from a results table using getColumn() and
+     * getAthleteLink().
      */
-    private List<parseRace.Athlete> extractAthletesFromTable(Element table) {
-        parseRace parser = new parseRace();
+    private List<Athlete> extractAthletesFromTable(Element table) {
+        // Use local column extraction methods
+        List<String> names = getColumn(table, "Name");
+        List<String> times = getColumn(table, "Time");
+        List<String> links = getAthleteLink(table);
 
-        // Use parseRace's existing column extraction
-        List<String> names = parser.getColumn(table, "Name");
-        List<String> times = parser.getColumn(table, "Time");
-        List<String> links = parser.getAthleteLink(table);
-
-        List<parseRace.Athlete> athletes = new ArrayList<>();
+        List<Athlete> athletes = new ArrayList<>();
         int limit = Math.min(names.size(), Math.min(times.size(), links.size()));
 
         for (int i = 0; i < limit; i++) {
@@ -211,7 +313,7 @@ public class RaceScraper {
                 continue;
             }
 
-            athletes.add(new parseRace.Athlete(name, time, link));
+            athletes.add(new Athlete(name, time, link));
         }
 
         return athletes;
@@ -300,7 +402,7 @@ public class RaceScraper {
         double distance = scraper.detectRaceDistance(meetUrl);
         System.out.println("[Step 1] Detected race distance: " + distance + "m");
 
-        List<parseRace.Athlete> athletes = scraper.scrapeMensRace(meetUrl);
+        List<Athlete> athletes = scraper.scrapeMensRace(meetUrl);
         System.out.println("[Step 1] Found " + athletes.size() + " athletes.");
 
         if (athletes.isEmpty()) {
