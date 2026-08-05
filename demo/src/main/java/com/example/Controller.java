@@ -18,7 +18,6 @@ import com.example.dto.RaceResultResponse;
 import com.example.service.RaceService;
 
 @RestController
-@CrossOrigin
 @RequestMapping("/api")
 public class Controller {
 

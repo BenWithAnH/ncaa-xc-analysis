@@ -17,7 +17,8 @@ public class AthleteRatingResponse {
         this.name = name;
         this.time = time;
         this.link = link;
-        this.rating = rating;
+        double truncated = Math.floor(rating * 100) / 100;
+        this.rating = truncated;
     }
 
     public String getName() {
