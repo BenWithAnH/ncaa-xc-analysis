@@ -23,7 +23,6 @@ public class scrapePriors {
                     .method(Connection.Method.GET)
                     .execute();
 
-            // Save the session cookies so the server remembers us
             Map<String, String> cookies = initialResponse.cookies();
 
             Document searchPage = initialResponse.parse();
@@ -160,7 +159,5 @@ public class scrapePriors {
         return getGender(doc);
     }
 
-    public static void main(String[] args) {
 
-    }
 }

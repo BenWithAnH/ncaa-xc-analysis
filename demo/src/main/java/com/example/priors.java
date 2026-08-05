@@ -148,8 +148,8 @@ public class priors {
                         bestEvent = eventName;
                         bestMark = mark;
                     }
+                }
             }
-
         } catch (Exception e) {
             e.printStackTrace();
         }

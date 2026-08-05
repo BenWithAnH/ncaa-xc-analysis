@@ -374,25 +374,16 @@ public class RaceScraper {
         getCAF cafCalculator = new getCAF();
         writeOutput writer = new writeOutput();
 
-        // 1. Test Single Meet Scraper
-        System.out.println("--- Starting 1-meet scraper test ---");
-        String testUrl = "https://tfrrs.org/results/xc/26324/Jasper_Fall_XC_Invitational";
-        System.out.println("URL: " + testUrl);
-        processMeet(testUrl, scraper, cafCalculator, writer);
 
         // 2. Test Bulk Scraper
-        System.out.println("\n--- Starting bulk scraper test ---");
         MeetScraper meetScraper = new MeetScraper();
-        // Fetch 1 page of meets to test the bulk functionality
-        List<MeetScraper.MeetInfo> meets = meetScraper.scrapeXCMeets(1);
+        List<MeetScraper.MeetInfo> meets = meetScraper.scrapeXCMeets(2);
         System.out.println("Found " + meets.size() + " meets from bulk scraper.");
 
-        // Test the pipeline on the first 2 meets from the bulk scraper results
         int limit = Math.min(2, meets.size());
         for (int i = 0; i < limit; i++) {
             MeetScraper.MeetInfo meet = meets.get(i);
             System.out.println("\n--- Processing bulk meet " + (i + 1) + " of " + limit + ": " + meet.name() + " ---");
-            System.out.println("URL: " + meet.url());
             processMeet(meet.url(), scraper, cafCalculator, writer);
         }
     }
@@ -414,7 +405,7 @@ public class RaceScraper {
         System.out
                 .println("[Step 2] Calculating CAF and prior ratings (this may take a minute due to rate limiting)...");
         // Using 1.06 as default fatigue coefficient for XC
-        List<getCAF.AthleteRating> ratings = cafCalculator.getCAF(athletes, distance, 1.06);
+        List<getCAF.AthleteRating> ratings = cafCalculator.getCAF(athletes, distance);
 
         System.out.println(
                 "[Step 2] Calculated CAF (Course Adjustment Factor): " + String.format("%.4f", cafCalculator.lastCaf));

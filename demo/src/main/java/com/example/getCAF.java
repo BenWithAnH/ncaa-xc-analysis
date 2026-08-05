@@ -31,8 +31,7 @@ public class getCAF {
     public final List<Double> ratings = Collections.synchronizedList(new ArrayList<>());
     public double lastCaf = 1.0;
 
-    public ArrayList<AthleteRating> getCAF(List<Athlete> athletes, double raceDistanceMeters,
-            double fatigueCoefficient) {
+    public ArrayList<AthleteRating> getCAF(List<Athlete> athletes, double raceDistanceMeters) {
         ratings.clear();
 
         if (athletes == null || athletes.isEmpty()) {
@@ -45,8 +44,7 @@ public class getCAF {
         List<Double> validRatios = Collections.synchronizedList(new ArrayList<>());
 
         List<CompletableFuture<Void>> futures = athletes.stream()
-                .map(athlete -> CompletableFuture.runAsync(() -> processAthlete(athlete, raceDistanceMeters,
-                        fatigueCoefficient, scraper, priorsCalculator, validRatios)))
+                .map(athlete -> CompletableFuture.runAsync(() -> processAthlete(athlete, raceDistanceMeters, scraper, priorsCalculator, validRatios)))
                 .collect(Collectors.toList());
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
@@ -62,7 +60,7 @@ public class getCAF {
             if (actualTime > 0.0) {
                 double adjustedTime = actualTime / this.lastCaf;
                 double rating = calculateRacePoints(actualTime, this.lastCaf, raceDistanceMeters, raceDistanceMeters,
-                        "M", fatigueCoefficient);
+                        "M");
 
                 // Instantiate the record and add it directly to the ArrayList
                 athleteRatingsList.add(new AthleteRating(athlete.name(), athlete.time(), athlete.link(), rating));
@@ -72,8 +70,7 @@ public class getCAF {
         return athleteRatingsList;
     }
 
-    private void processAthlete(Athlete athlete, double raceDistanceMeters, double fatigueCoefficient,
-            scrapePriors scraper, priors priorsCalculator, List<Double> validRatios) {
+    private void processAthlete(Athlete athlete, double raceDistanceMeters, scrapePriors scraper, priors priorsCalculator, List<Double> validRatios) {
         try {
             Thread.sleep(RATE_LIMIT_MS);
         } catch (InterruptedException e) {
@@ -94,7 +91,7 @@ public class getCAF {
 
         if (priorRating > 0.0 && actualTime > 0.0) {
             double unadjustedRaceRating = calculateRacePoints(
-                    actualTime, 1.0, raceDistanceMeters, raceDistanceMeters, gender, fatigueCoefficient);
+                    actualTime, 1.0, raceDistanceMeters, raceDistanceMeters, gender);
 
             if (unadjustedRaceRating > 0.0) {
                 validRatios.add(priorRating / unadjustedRaceRating);
@@ -126,11 +123,11 @@ public class getCAF {
     }
 
     public double calculateRacePoints(double actualTime, double caf, double xcDistanceMeters,
-            double targetTrackDistance, String gender, double fatigueCoefficient) {
+            double targetTrackDistance, String gender) {
 
         double normalizedXcTime = actualTime / caf;
         double equivalentTrackTime = normalizedXcTime
-                * Math.pow(targetTrackDistance / xcDistanceMeters, fatigueCoefficient);
+                * Math.pow(targetTrackDistance / xcDistanceMeters, 1.06);
 
         double trackBaselineSeconds = getBaselineSeconds(targetTrackDistance, gender);
 
