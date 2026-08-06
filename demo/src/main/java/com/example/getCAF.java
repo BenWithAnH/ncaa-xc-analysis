@@ -64,6 +64,7 @@ public class getCAF {
             }
         }
 
+        athleteRatingsList.sort((a, b) -> Double.compare(b.rating(), a.rating()));
         return athleteRatingsList;
     }
 

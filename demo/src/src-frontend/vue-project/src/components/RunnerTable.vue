@@ -16,6 +16,7 @@ const scrapeRace = async () => {
   if(!props.targetMeetUrl) return;
 
   isLoading.value = true;
+  raceData.value = null;
   try {
     const payload = {
       meetUrl: props.targetMeetUrl

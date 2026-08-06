@@ -96,14 +96,27 @@ public class RaceService {
                 com.example.entity.Athlete athlete = athleteRepository.findById(r.link()).orElse(null);
                 if (athlete != null) {
                     String currentBest = athlete.getBestTime();
+                    
                     if (currentBest == null || currentBest.isEmpty()) {
                         athlete.setBestTime(r.time());
+                        athlete.setRating(r.rating());
                         athleteRepository.save(athlete);
                     } else {
                         double currentBestSeconds = priors.parseTimeToSeconds(currentBest);
                         double newSeconds = priors.parseTimeToSeconds(r.time());
+                        boolean updated = false;
+                        
                         if (newSeconds > 0 && newSeconds < currentBestSeconds) {
                             athlete.setBestTime(r.time());
+                            updated = true;
+                        }
+                        
+                        if (r.rating() > athlete.getRating()) {
+                            athlete.setRating(r.rating());
+                            updated = true;
+                        }
+                        
+                        if (updated) {
                             athleteRepository.save(athlete);
                         }
                     }
@@ -220,6 +233,6 @@ public class RaceService {
      * Retrieves the top 100 athletes by their rating (highest first).
      */
     public List<com.example.entity.Athlete> getTopAthletes() {
-        return athleteRepository.findTop100ByOrderByRatingDesc();
+        return athleteRepository.findTop100ByBestTimeIsNotNullOrderByRatingDesc();
     }
 }
