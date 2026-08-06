@@ -60,6 +60,17 @@ public class Controller {
     public List<MeetResponse> listMeets(@RequestParam(defaultValue = "1") int maxPages) {
         return raceService.listXCMeets(maxPages);
     }
+    
+    /**
+     * Bulk scrapes multiple meets from TFRRS and saves results to PostgreSQL.
+     *
+     * POST /api/meets/bulk-scrape?maxPages=1
+     */
+    @PostMapping("/meets/bulk-scrape")
+    public String bulkScrape(@RequestParam(defaultValue = "1") int maxPages) {
+        int totalSaved = raceService.bulkScrapeMeets(maxPages);
+        return "Bulk scrape completed. Saved " + totalSaved + " athletes across " + maxPages + " page(s) of meets.";
+    }
 
     /**
      * Fetches an athlete's PRs and prior rating from their TFRRS profile.

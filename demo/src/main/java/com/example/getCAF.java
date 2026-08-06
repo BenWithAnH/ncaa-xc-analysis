@@ -6,17 +6,9 @@ import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import com.example.RaceScraper.Athlete;
+import com.example.repository.AthleteRepository;
 import org.jsoup.nodes.Document;
-
-// error handling, maybe implement a
-// big scraper part (every meet in a given list)
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
+import java.util.Optional;
 
 public class getCAF {
 
@@ -25,11 +17,17 @@ public class getCAF {
     private static final double RATING_CURVE_EXPONENT = 0.5;
     private static final int RATE_LIMIT_MS = 50;
 
-    public record AthleteRating(String name, String time, String link, double rating) {
+    public record AthleteRating(String name, String time, String link, double rating, double priorRating) {
     }
 
     public final List<Double> ratings = Collections.synchronizedList(new ArrayList<>());
     public double lastCaf = 1.0;
+
+    private final AthleteRepository athleteRepository;
+
+    public getCAF(AthleteRepository athleteRepository) {
+        this.athleteRepository = athleteRepository;
+    }
 
     public ArrayList<AthleteRating> getCAF(List<Athlete> athletes, double raceDistanceMeters) {
         ratings.clear();
@@ -42,9 +40,10 @@ public class getCAF {
         priors priorsCalculator = new priors();
 
         List<Double> validRatios = Collections.synchronizedList(new ArrayList<>());
+        List<AthleteRating> preRatings = Collections.synchronizedList(new ArrayList<>());
 
         List<CompletableFuture<Void>> futures = athletes.stream()
-                .map(athlete -> CompletableFuture.runAsync(() -> processAthlete(athlete, raceDistanceMeters, scraper, priorsCalculator, validRatios)))
+                .map(athlete -> CompletableFuture.runAsync(() -> processAthlete(athlete, raceDistanceMeters, scraper, priorsCalculator, validRatios, preRatings)))
                 .collect(Collectors.toList());
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
@@ -54,35 +53,54 @@ public class getCAF {
         // 4. CLEAN OUTPUT USING RECORD AND EXPLICIT ARRAYLIST
         ArrayList<AthleteRating> athleteRatingsList = new ArrayList<>();
 
-        for (Athlete athlete : athletes) {
-            double actualTime = priors.parseTimeToSeconds(athlete.time());
+        for (AthleteRating preRating : preRatings) {
+            double actualTime = priors.parseTimeToSeconds(preRating.time());
 
             if (actualTime > 0.0) {
                 double adjustedTime = actualTime / this.lastCaf;
-                double rating = calculateRacePoints(actualTime, this.lastCaf, raceDistanceMeters, raceDistanceMeters,
-                        "M");
+                double rating = calculateRacePoints(actualTime, this.lastCaf, raceDistanceMeters, raceDistanceMeters, "M");
 
-                // Instantiate the record and add it directly to the ArrayList
-                athleteRatingsList.add(new AthleteRating(athlete.name(), athlete.time(), athlete.link(), rating));
+                athleteRatingsList.add(new AthleteRating(preRating.name(), preRating.time(), preRating.link(), rating, preRating.priorRating()));
             }
         }
 
         return athleteRatingsList;
     }
 
-    private void processAthlete(Athlete athlete, double raceDistanceMeters, scrapePriors scraper, priors priorsCalculator, List<Double> validRatios) {
-        try {
-            Thread.sleep(RATE_LIMIT_MS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return;
+    private void processAthlete(Athlete athlete, double raceDistanceMeters, scrapePriors scraper, priors priorsCalculator, List<Double> validRatios, List<AthleteRating> preRatings) {
+        double priorRating = 0.0;
+        
+        // 1. Check cache first!
+        if (athlete.link() != null && !athlete.link().isEmpty()) {
+            Optional<com.example.entity.Athlete> cachedAthlete = athleteRepository.findById(athlete.link());
+            if (cachedAthlete.isPresent() && cachedAthlete.get().getRating() != null && cachedAthlete.get().getRating() > 0) {
+                priorRating = cachedAthlete.get().getRating();
+            }
         }
 
-        Document doc = scraper.getAthleteDocument(athlete.link());
-        String gender = scraper.getGender(doc);
-        ArrayList<String> prs = scraper.getPRs(doc);
+        // 2. If not in cache, scrape it
+        if (priorRating == 0.0 && athlete.link() != null && !athlete.link().isEmpty()) {
+            try {
+                Thread.sleep(RATE_LIMIT_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
 
-        double priorRating = priorsCalculator.getPriorRating(prs, gender);
+            Document doc = scraper.getAthleteDocument(athlete.link());
+            if (doc != null) {
+                String gender = scraper.getGender(doc);
+                ArrayList<String> prs = scraper.getPRs(doc);
+                priorRating = priorsCalculator.getPriorRating(prs, gender);
+
+                // Save to cache
+                if (priorRating > 0.0) {
+                    com.example.entity.Athlete newAthlete = new com.example.entity.Athlete(athlete.link(), athlete.name(), priorRating);
+                    athleteRepository.save(newAthlete);
+                }
+            }
+        }
+
         if (priorRating > 0.0) {
             ratings.add(priorRating);
         }
@@ -91,12 +109,14 @@ public class getCAF {
 
         if (priorRating > 0.0 && actualTime > 0.0) {
             double unadjustedRaceRating = calculateRacePoints(
-                    actualTime, 1.0, raceDistanceMeters, raceDistanceMeters, gender);
+                    actualTime, 1.0, raceDistanceMeters, raceDistanceMeters, "M"); // Simplified gender for now
 
             if (unadjustedRaceRating > 0.0) {
                 validRatios.add(priorRating / unadjustedRaceRating);
             }
         }
+
+        preRatings.add(new AthleteRating(athlete.name(), athlete.time(), athlete.link(), 0.0, priorRating));
     }
 
     private double calculateTrimmedAverageRatio(List<Double> ratios) {
@@ -150,6 +170,4 @@ public class getCAF {
 
         return (distanceMeters / 1000.0) * 190.0;
     }
-
-
 }

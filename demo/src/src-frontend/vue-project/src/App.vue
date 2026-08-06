@@ -39,7 +39,7 @@ const handleMeetSelection = (url) => {
 }
 
 .right{
-  flex: 3;
+  flex: 5;
 }
 
 .base{
@@ -47,9 +47,6 @@ const handleMeetSelection = (url) => {
   justify-content: center;
   align-items: center;
   height: 200px;
-  background-color: rgb(102, 103, 111);
-  border: 2px dashed #fefbfb;
-  color: rgba(5, 5, 5, 0.6);
 }
 
 header {

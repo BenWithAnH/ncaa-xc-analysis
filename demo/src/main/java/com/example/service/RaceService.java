@@ -6,6 +6,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.example.MeetScraper;
 import com.example.RaceScraper;
@@ -18,6 +19,10 @@ import com.example.getCAF;
 import com.example.priors;
 import com.example.scrapePriors;
 
+import com.example.entity.RaceResult;
+import com.example.repository.AthleteRepository;
+import com.example.repository.RaceResultRepository;
+
 /**
  * Service layer that wraps the existing scraping and rating logic,
  * exposing clean methods for the REST controller.
@@ -28,20 +33,30 @@ public class RaceService {
     @Value("${app.default-fatigue-coefficient:1.06}")
     private double defaultFatigueCoefficient;
 
+    private final AthleteRepository athleteRepository;
+    private final RaceResultRepository raceResultRepository;
+
+    public RaceService(AthleteRepository athleteRepository, RaceResultRepository raceResultRepository) {
+        this.athleteRepository = athleteRepository;
+        this.raceResultRepository = raceResultRepository;
+    }
+
     /**
      * Scrapes a meet page, calculates CAF, and returns fully-rated athletes.
+     * It also saves the RaceResults to the database.
      *
      * @param meetUrl             TFRRS meet URL
      * @return RaceResultResponse with CAF, distance, and athlete ratings
      */
+    @Transactional
     public RaceResultResponse scrapeAndRateRace(String meetUrl, Double fatigueCoefficient) {
         if (meetUrl == null || meetUrl.trim().isEmpty()) {
             throw new IllegalArgumentException("meetUrl is required");
         }
 
-
         RaceScraper raceScraper = new RaceScraper();
-        getCAF cafCalculator = new getCAF();
+        // Inject repository for caching!
+        getCAF cafCalculator = new getCAF(athleteRepository);
 
         // Detect race distance from the meet page
         double distance = raceScraper.detectRaceDistance(meetUrl);
@@ -55,12 +70,63 @@ public class RaceService {
         // Calculate CAF and rate each athlete
         List<getCAF.AthleteRating> ratings = cafCalculator.getCAF(athletes, distance);
 
-        // Map internal records to API DTOs
-        List<AthleteRatingResponse> dtoList = ratings.stream()
-                .map(r -> new AthleteRatingResponse(r.name(), r.time(), r.link(), r.rating()))
-                .collect(Collectors.toList());
+        // Map internal records to API DTOs and save RaceResults to DB
+        List<AthleteRatingResponse> dtoList = new ArrayList<>();
+        
+        // Extract meet name from the URL roughly, or parse it properly if possible
+        String meetName = extractMeetName(meetUrl);
+        String dummyDate = "TBD"; // We'd need the meet parser to get the date.
+
+        for (getCAF.AthleteRating r : ratings) {
+            dtoList.add(new AthleteRatingResponse(r.name(), r.time(), r.link(), r.rating()));
+            
+            // Save to RaceResult history
+            if (r.link() != null && !r.link().isEmpty()) {
+                RaceResult result = new RaceResult(
+                        r.link(),
+                        r.name(),
+                        meetName,
+                        dummyDate,
+                        r.time(),
+                        r.priorRating()
+                );
+                raceResultRepository.save(result);
+            }
+        }
 
         return new RaceResultResponse(meetUrl, distance, cafCalculator.lastCaf, dtoList);
+    }
+    
+    private String extractMeetName(String url) {
+        if (url == null) return "Unknown Meet";
+        String[] parts = url.split("/");
+        return parts[parts.length - 1].replace("_", " ");
+    }
+
+    /**
+     * Bulk scrapes multiple meets from TFRRS and saves results to PostgreSQL.
+     */
+    public int bulkScrapeMeets(int maxPages) {
+        if (maxPages < 1) {
+            throw new IllegalArgumentException("maxPages must be at least 1");
+        }
+
+        MeetScraper meetScraper = new MeetScraper();
+        List<MeetScraper.MeetInfo> meets = meetScraper.scrapeXCMeets(maxPages);
+        int totalSaved = 0;
+
+        for (MeetScraper.MeetInfo meet : meets) {
+            System.out.println("Processing meet: " + meet.name());
+            try {
+                RaceResultResponse response = scrapeAndRateRace(meet.url(), defaultFatigueCoefficient);
+                // Scrape and rate race already saves RaceResult entities!
+                totalSaved += response.getAthletes().size();
+            } catch (Exception e) {
+                System.err.println("Error processing meet " + meet.name() + ": " + e.getMessage());
+            }
+        }
+        
+        return totalSaved;
     }
 
     /**
@@ -110,6 +176,12 @@ public class RaceService {
     public AthleteProfileResponse getAthleteProfile(String athleteLink) {
         if (athleteLink == null || athleteLink.trim().isEmpty()) {
             throw new IllegalArgumentException("athlete link is required");
+        }
+        
+        // Cache Check
+        var cachedAthlete = athleteRepository.findById(athleteLink);
+        if (cachedAthlete.isPresent() && cachedAthlete.get().getRating() != null) {
+            return new AthleteProfileResponse("Cached", new ArrayList<>(), cachedAthlete.get().getRating());
         }
 
         scrapePriors scraper = new scrapePriors();
