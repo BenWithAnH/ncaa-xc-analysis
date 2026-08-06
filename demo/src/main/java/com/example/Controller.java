@@ -15,6 +15,7 @@ import com.example.dto.AthleteRatingResponse;
 import com.example.dto.MeetResponse;
 import com.example.dto.RaceRequest;
 import com.example.dto.RaceResultResponse;
+import com.example.entity.Athlete;
 import com.example.service.RaceService;
 
 @RestController
@@ -25,6 +26,16 @@ public class Controller {
 
     public Controller(RaceService raceService) {
         this.raceService = raceService;
+    }
+
+    /**
+     * Fetches the top athletes ranked by their rating, including their best time.
+     *
+     * GET /api/athletes/top
+     */
+    @GetMapping("/athletes/top")
+    public List<Athlete> getTopAthletes() {
+        return raceService.getTopAthletes();
     }
 
     /**

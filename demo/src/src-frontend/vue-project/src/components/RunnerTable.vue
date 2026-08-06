@@ -87,3 +87,43 @@ watch(() => props.targetMeetUrl, () => {
     </section>
   </div>
 </template>
+
+<style scoped>
+.results-card {
+  padding: 1rem;
+}
+header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+header h2 {
+  margin: 0;
+}
+.race-metrics {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.9rem;
+  color: #666;
+}
+.race-metrics p {
+  margin: 0;
+}
+.athlete-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.athlete-table th, .athlete-table td {
+  border: 1px solid #ccc;
+  padding: 0.5rem;
+  text-align: left;
+}
+a {
+  color: #42b983;
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+</style>

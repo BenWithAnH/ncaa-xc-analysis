@@ -21,6 +21,8 @@ public class Athlete {
 
     private Double rating;
 
+    private String bestTime;
+
     @UpdateTimestamp
     private LocalDateTime lastUpdated;
 
@@ -55,6 +57,14 @@ public class Athlete {
 
     public void setRating(Double rating) {
         this.rating = rating;
+    }
+
+    public String getBestTime() {
+        return bestTime;
+    }
+
+    public void setBestTime(String bestTime) {
+        this.bestTime = bestTime;
     }
 
     public LocalDateTime getLastUpdated() {

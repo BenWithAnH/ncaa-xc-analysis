@@ -91,6 +91,23 @@ public class RaceService {
                         r.priorRating()
                 );
                 raceResultRepository.save(result);
+
+                // Update best time for the athlete
+                com.example.entity.Athlete athlete = athleteRepository.findById(r.link()).orElse(null);
+                if (athlete != null) {
+                    String currentBest = athlete.getBestTime();
+                    if (currentBest == null || currentBest.isEmpty()) {
+                        athlete.setBestTime(r.time());
+                        athleteRepository.save(athlete);
+                    } else {
+                        double currentBestSeconds = priors.parseTimeToSeconds(currentBest);
+                        double newSeconds = priors.parseTimeToSeconds(r.time());
+                        if (newSeconds > 0 && newSeconds < currentBestSeconds) {
+                            athlete.setBestTime(r.time());
+                            athleteRepository.save(athlete);
+                        }
+                    }
+                }
             }
         }
 
@@ -197,5 +214,12 @@ public class RaceService {
         double priorRating = priorsCalculator.getPriorRating(prs, gender);
 
         return new AthleteProfileResponse(gender, prs, priorRating);
+    }
+
+    /**
+     * Retrieves the top 100 athletes by their rating (highest first).
+     */
+    public List<com.example.entity.Athlete> getTopAthletes() {
+        return athleteRepository.findTop100ByOrderByRatingDesc();
     }
 }
