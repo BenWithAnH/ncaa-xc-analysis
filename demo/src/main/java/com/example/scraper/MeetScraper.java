@@ -1,4 +1,4 @@
-package com.example;
+package com.example.scraper;
 
 import java.io.IOException;
 import java.util.ArrayList;

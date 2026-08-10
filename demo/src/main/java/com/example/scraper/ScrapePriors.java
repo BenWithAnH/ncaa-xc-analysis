@@ -1,4 +1,4 @@
-package com.example;
+package com.example.scraper;
 
 import java.io.IOException;
 import java.util.Map;
@@ -9,7 +9,9 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.Connection;
 
-public class scrapePriors {
+import com.example.Priors;
+
+public class ScrapePriors {
 
     public String getID(String athleteName) {
 
@@ -81,7 +83,7 @@ public class scrapePriors {
                     }
 
                     if (yearsOld > 0) {
-                        double seconds = priors.parseTimeToSeconds(time);
+                        double seconds = Priors.parseTimeToSeconds(time);
                         if (seconds > 0) {
                             double adjustedSeconds = seconds * Math.pow(0.97, yearsOld);
                             return String.format(java.util.Locale.US, "%.2f", adjustedSeconds);

@@ -1,4 +1,4 @@
-package com.example;
+package com.example.scraper;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -298,7 +298,7 @@ public class RaceScraper {
      */
     public double detectRaceDistance(String meetUrl) {
         // Reuse scrapePriors' document-fetching pattern
-        scrapePriors scraper = new scrapePriors();
+        ScrapePriors scraper = new ScrapePriors();
         Document doc = scraper.getAthleteDocument(meetUrl);
         if (doc == null) {
             return 8000.0;

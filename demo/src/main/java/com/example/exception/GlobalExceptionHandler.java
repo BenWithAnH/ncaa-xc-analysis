@@ -1,4 +1,4 @@
-package com.example;
+package com.example.exception;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

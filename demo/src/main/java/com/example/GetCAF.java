@@ -5,12 +5,13 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
-import com.example.RaceScraper.Athlete;
+import com.example.scraper.RaceScraper.Athlete;
 import com.example.repository.AthleteRepository;
 import org.jsoup.nodes.Document;
 import java.util.Optional;
+import com.example.scraper.ScrapePriors;
 
-public class getCAF {
+public class GetCAF {
 
     // 1. CONSTANTS
     public static final double BASE_SCORE = 1000.0;
@@ -25,7 +26,7 @@ public class getCAF {
 
     private final AthleteRepository athleteRepository;
 
-    public getCAF(AthleteRepository athleteRepository) {
+    public GetCAF(AthleteRepository athleteRepository) {
         this.athleteRepository = athleteRepository;
     }
 
@@ -36,8 +37,8 @@ public class getCAF {
             return new ArrayList<>();
         }
 
-        scrapePriors scraper = new scrapePriors();
-        priors priorsCalculator = new priors();
+        ScrapePriors scraper = new ScrapePriors();
+        Priors priorsCalculator = new Priors();
 
         List<Double> validRatios = Collections.synchronizedList(new ArrayList<>());
         List<AthleteRating> preRatings = Collections.synchronizedList(new ArrayList<>());
@@ -53,7 +54,7 @@ public class getCAF {
         ArrayList<AthleteRating> athleteRatingsList = new ArrayList<>();
 
         for (AthleteRating preRating : preRatings) {
-            double actualTime = priors.parseTimeToSeconds(preRating.time());
+            double actualTime = Priors.parseTimeToSeconds(preRating.time());
 
             if (actualTime > 0.0) {
                 double adjustedTime = actualTime / this.lastCaf;
@@ -67,7 +68,7 @@ public class getCAF {
         return athleteRatingsList;
     }
 
-    private void processAthlete(Athlete athlete, double raceDistanceMeters, scrapePriors scraper, priors priorsCalculator, List<Double> validRatios, List<AthleteRating> preRatings) {
+    private void processAthlete(Athlete athlete, double raceDistanceMeters, ScrapePriors scraper, Priors priorsCalculator, List<Double> validRatios, List<AthleteRating> preRatings) {
         double priorRating = 0.0;
         
         if (athlete.link() != null && !athlete.link().isEmpty()) {
@@ -103,7 +104,7 @@ public class getCAF {
             ratings.add(priorRating);
         }
 
-        double actualTime = priors.parseTimeToSeconds(athlete.time());
+        double actualTime = Priors.parseTimeToSeconds(athlete.time());
 
         if (priorRating > 0.0 && actualTime > 0.0) {
             double unadjustedRaceRating = calculateRacePoints(

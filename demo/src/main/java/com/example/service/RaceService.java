@@ -8,16 +8,16 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.example.MeetScraper;
-import com.example.RaceScraper;
-import com.example.RaceScraper.Athlete;
+import com.example.scraper.MeetScraper;
+import com.example.scraper.RaceScraper;
+import com.example.scraper.RaceScraper.Athlete;
 import com.example.dto.AthleteProfileResponse;
 import com.example.dto.AthleteRatingResponse;
 import com.example.dto.MeetResponse;
 import com.example.dto.RaceResultResponse;
-import com.example.getCAF;
-import com.example.priors;
-import com.example.scrapePriors;
+import com.example.GetCAF;
+import com.example.Priors;
+import com.example.scraper.ScrapePriors;
 
 import com.example.entity.RaceResult;
 import com.example.repository.AthleteRepository;
@@ -55,7 +55,7 @@ public class RaceService {
         }
 
         RaceScraper raceScraper = new RaceScraper();
-        getCAF cafCalculator = new getCAF(athleteRepository);
+        GetCAF cafCalculator = new GetCAF(athleteRepository);
 
         double distance = raceScraper.detectRaceDistance(meetUrl);
 
@@ -64,14 +64,14 @@ public class RaceService {
             return new RaceResultResponse(meetUrl, distance, 1.0, new ArrayList<>());
         }
 
-        List<getCAF.AthleteRating> ratings = cafCalculator.getCAF(athletes, distance);
+        List<GetCAF.AthleteRating> ratings = cafCalculator.getCAF(athletes, distance);
 
         List<AthleteRatingResponse> dtoList = new ArrayList<>();
         
         String meetName = extractMeetName(meetUrl);
         String dummyDate = "TBD"; 
 
-        for (getCAF.AthleteRating r : ratings) {
+        for (GetCAF.AthleteRating r : ratings) {
             dtoList.add(new AthleteRatingResponse(r.name(), r.time(), r.link(), r.rating()));
             
             if (r.link() != null && !r.link().isEmpty()) {
@@ -98,8 +98,8 @@ public class RaceService {
                         athlete.setRating(r.rating());
                         athleteRepository.save(athlete);
                     } else {
-                        double currentBestSeconds = priors.parseTimeToSeconds(currentBest);
-                        double newSeconds = priors.parseTimeToSeconds(r.time());
+                        double currentBestSeconds = Priors.parseTimeToSeconds(currentBest);
+                        double newSeconds = Priors.parseTimeToSeconds(r.time());
                         boolean updated = false;
                         
                         if (newSeconds > 0 && newSeconds < currentBestSeconds) {
@@ -209,8 +209,8 @@ public class RaceService {
             return new AthleteProfileResponse("Cached", new ArrayList<>(), cachedAthlete.get().getRating());
         }
 
-        scrapePriors scraper = new scrapePriors();
-        priors priorsCalculator = new priors();
+        ScrapePriors scraper = new ScrapePriors();
+        Priors priorsCalculator = new Priors();
 
         org.jsoup.nodes.Document doc = scraper.getAthleteDocument(athleteLink);
         if (doc == null) {

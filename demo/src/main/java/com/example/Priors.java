@@ -11,7 +11,7 @@ import java.util.Map;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
-public class priors {
+public class Priors {
 
     private static final List<String> EVENTS = Arrays.asList(
             "800m",
@@ -55,9 +55,8 @@ public class priors {
 
     private static File findCoefficientsFile() {
         String[] paths = {
-                "src/main/iaaf-scoring-tables-master/iaaf-scoring-tables-master/coefficients-2025.json",
-                "demo/src/main/iaaf-scoring-tables-master/iaaf-scoring-tables-master/coefficients-2025.json",
-                "../demo/src/main/iaaf-scoring-tables-master/iaaf-scoring-tables-master/coefficients-2025.json",
+                "src/main/resources/coefficients-2025.json",
+                "demo/src/main/resources/coefficients-2025.json",
                 "coefficients-2025.json"
         };
         for (String path : paths) {
