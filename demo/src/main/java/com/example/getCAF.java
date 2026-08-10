@@ -50,7 +50,6 @@ public class getCAF {
 
         this.lastCaf = calculateTrimmedAverageRatio(validRatios);
 
-        // 4. CLEAN OUTPUT USING RECORD AND EXPLICIT ARRAYLIST
         ArrayList<AthleteRating> athleteRatingsList = new ArrayList<>();
 
         for (AthleteRating preRating : preRatings) {
@@ -71,7 +70,6 @@ public class getCAF {
     private void processAthlete(Athlete athlete, double raceDistanceMeters, scrapePriors scraper, priors priorsCalculator, List<Double> validRatios, List<AthleteRating> preRatings) {
         double priorRating = 0.0;
         
-        // 1. Check cache first!
         if (athlete.link() != null && !athlete.link().isEmpty()) {
             Optional<com.example.entity.Athlete> cachedAthlete = athleteRepository.findById(athlete.link());
             if (cachedAthlete.isPresent() && cachedAthlete.get().getRating() != null && cachedAthlete.get().getRating() > 0) {
@@ -79,7 +77,6 @@ public class getCAF {
             }
         }
 
-        // 2. If not in cache, scrape it
         if (priorRating == 0.0 && athlete.link() != null && !athlete.link().isEmpty()) {
             try {
                 Thread.sleep(RATE_LIMIT_MS);

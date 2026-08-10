@@ -1,8 +1,6 @@
 package com.example.dto;
 
-/**
- * API response representing a single XC meet from TFRRS.
- */
+
 public class MeetResponse {
 
     private String url;

@@ -1,8 +1,6 @@
 package com.example.dto;
 
-/**
- * Request body for the race rating endpoint.
- */
+
 public class RaceRequest {
 
     private String meetUrl;

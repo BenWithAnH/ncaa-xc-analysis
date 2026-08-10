@@ -55,32 +55,25 @@ public class RaceService {
         }
 
         RaceScraper raceScraper = new RaceScraper();
-        // Inject repository for caching!
         getCAF cafCalculator = new getCAF(athleteRepository);
 
-        // Detect race distance from the meet page
         double distance = raceScraper.detectRaceDistance(meetUrl);
 
-        // Scrape athletes from the men's individual results
         List<Athlete> athletes = raceScraper.scrapeMensRace(meetUrl);
         if (athletes.isEmpty()) {
             return new RaceResultResponse(meetUrl, distance, 1.0, new ArrayList<>());
         }
 
-        // Calculate CAF and rate each athlete
         List<getCAF.AthleteRating> ratings = cafCalculator.getCAF(athletes, distance);
 
-        // Map internal records to API DTOs and save RaceResults to DB
         List<AthleteRatingResponse> dtoList = new ArrayList<>();
         
-        // Extract meet name from the URL roughly, or parse it properly if possible
         String meetName = extractMeetName(meetUrl);
-        String dummyDate = "TBD"; // We'd need the meet parser to get the date.
+        String dummyDate = "TBD"; 
 
         for (getCAF.AthleteRating r : ratings) {
             dtoList.add(new AthleteRatingResponse(r.name(), r.time(), r.link(), r.rating()));
             
-            // Save to RaceResult history
             if (r.link() != null && !r.link().isEmpty()) {
                 RaceResult result = new RaceResult(
                         r.link(),
@@ -88,13 +81,16 @@ public class RaceService {
                         meetName,
                         dummyDate,
                         r.time(),
-                        r.priorRating()
+                        r.rating() 
                 );
                 raceResultRepository.save(result);
 
-                // Update best time for the athlete
                 com.example.entity.Athlete athlete = athleteRepository.findById(r.link()).orElse(null);
-                if (athlete != null) {
+                if (athlete == null) {
+                    athlete = new com.example.entity.Athlete(r.link(), r.name(), r.rating());
+                    athlete.setBestTime(r.time());
+                    athleteRepository.save(athlete);
+                } else {
                     String currentBest = athlete.getBestTime();
                     
                     if (currentBest == null || currentBest.isEmpty()) {
@@ -111,7 +107,8 @@ public class RaceService {
                             updated = true;
                         }
                         
-                        if (r.rating() > athlete.getRating()) {
+                        double currentRating = athlete.getRating() != null ? athlete.getRating() : 0.0;
+                        if (r.rating() > currentRating) {
                             athlete.setRating(r.rating());
                             updated = true;
                         }
@@ -133,9 +130,7 @@ public class RaceService {
         return parts[parts.length - 1].replace("_", " ");
     }
 
-    /**
-     * Bulk scrapes multiple meets from TFRRS and saves results to PostgreSQL.
-     */
+
     public int bulkScrapeMeets(int maxPages) {
         if (maxPages < 1) {
             throw new IllegalArgumentException("maxPages must be at least 1");

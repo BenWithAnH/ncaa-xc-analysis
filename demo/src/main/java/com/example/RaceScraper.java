@@ -15,7 +15,7 @@ import org.jsoup.select.Elements;
  * profile link.
  *
  * Also provides general-purpose table-parsing utilities (getColumn,
- * getAthleteLink) that were formerly in parseRace.
+ * getAthleteLink)
  */
 public class RaceScraper {
 
@@ -23,12 +23,9 @@ public class RaceScraper {
     private static final int TIMEOUT_MS = 15000;
     private static final int MEET_DELAY_MS = 2000; // 2s delay before fetching
 
-    // --- Athlete record (moved from parseRace) ---
 
     public record Athlete(String name, String time, String link) {
     }
-
-    // --- Table-parsing state and helpers (moved from parseRace) ---
 
     private int nameIndex = -1;
 
@@ -44,7 +41,7 @@ public class RaceScraper {
             Elements headers = headerRow.select("th, td");
             for (int i = 0; i < headers.size(); i++) {
                 if (headers.get(i).text().equalsIgnoreCase(rowName)) {
-                    colIndex = i; // Store 0-based index
+                    colIndex = i;
                     if (rowName.equals("Name"))
                         nameIndex = i;
                     break;
@@ -56,7 +53,6 @@ public class RaceScraper {
             for (int i = 1; i < rows.size(); i++) {
                 Element row = rows.get(i);
                 Elements cells = row.select("th, td");
-                // Ensure the row has enough columns (handles empty or irregular rows)
                 if (cells.size() > colIndex) {
                     columnValues.add(cells.get(colIndex).text());
                 }
@@ -83,7 +79,7 @@ public class RaceScraper {
                         String url = link.absUrl("href").replaceAll("\\s+", "");
                         links.add(url);
                     } else {
-                        links.add(""); // Keep alignment
+                        links.add(""); 
                     }
                 }
             }
@@ -91,7 +87,6 @@ public class RaceScraper {
         return links;
     }
 
-    // --- Simple race scraper (moved from parseRace.getCAF) ---
 
     /**
      * Fetches a race results page and extracts all athletes from the first
@@ -125,7 +120,6 @@ public class RaceScraper {
         return null;
     }
 
-    // --- Men's XC-specific scraper ---
 
     /**
      * Scrapes the men's individual race results from a TFRRS XC meet page.
@@ -138,19 +132,14 @@ public class RaceScraper {
         List<Athlete> athletes = new ArrayList<>();
 
         try {
-            // Rate limit
             Thread.sleep(MEET_DELAY_MS);
 
             Document doc = Jsoup.connect(meetUrl)
                     .userAgent(USER_AGENT)
                     .timeout(TIMEOUT_MS)
-                    .maxBodySize(0) // No limit on body size — meet pages can be very large
+                    .maxBodySize(0) 
                     .get();
 
-            // Find all event section headings — they look like:
-            // <h3>Men 10k Run CC Individual Results (10k)</h3>
-            // or <h3>Men 8k Run CC Individual Results (8k)</h3>
-            // We need to find the "Individual Results" heading for a Men's CC event.
 
             Elements headings = doc.select("h3");
             Element mensIndividualTable = null;
@@ -158,26 +147,20 @@ public class RaceScraper {
 
             for (Element h3 : headings) {
                 String text = h3.text().trim();
-                // Match headings like "Men 8k Run CC Individual Results" or "Men 10k Run CC
-                // Individual Results"
                 if (text.toLowerCase().contains("men")
                         && !text.toLowerCase().contains("women")
                         && text.toLowerCase().contains("cc")
                         && text.toLowerCase().contains("individual")) {
 
                     eventName = text;
-                    // The results table immediately follows this heading's parent div structure
-                    // Walk up to find the containing div, then find the next table
                     Element container = h3.parent();
                     if (container != null) {
-                        // The table is a sibling or descendant of the heading's container
                         Element tableParent = container.parent();
                         if (tableParent != null) {
                             mensIndividualTable = tableParent.selectFirst("table");
                         }
                     }
 
-                    // Alternative: try finding the table as a next sibling of the heading's wrapper
                     if (mensIndividualTable == null) {
                         Element current = h3;
                         while (current != null) {
@@ -190,7 +173,6 @@ public class RaceScraper {
                                 mensIndividualTable = next.selectFirst("table");
                                 break;
                             }
-                            // Try going up one level
                             current = current.parent();
                             if (current != null && current.tagName().equals("div")) {
                                 Element nextDiv = current.nextElementSibling();
@@ -212,8 +194,6 @@ public class RaceScraper {
                 }
             }
 
-            // Fallback: if we couldn't find the men's individual results via heading,
-            // look for any table that follows a "Men" event heading in the event structure
             if (mensIndividualTable == null) {
                 mensIndividualTable = findMensTableFallback(doc);
             }
@@ -223,7 +203,6 @@ public class RaceScraper {
                 return athletes;
             }
 
-            // Extract athletes from the table using local helpers
             athletes = extractAthletesFromTable(mensIndividualTable);
 
             if (!eventName.isEmpty()) {
@@ -245,15 +224,11 @@ public class RaceScraper {
      * tables that contain athlete links and are associated with a "Men" event.
      */
     private Element findMensTableFallback(Document doc) {
-        // Strategy: find all custom-table-title divs that mention "Men" and
-        // "Individual"
         Elements titleDivs = doc.select("div.custom-table-title");
         for (Element titleDiv : titleDivs) {
             String titleText = titleDiv.text().toLowerCase();
             if (titleText.contains("men") && !titleText.contains("women") && titleText.contains("individual")) {
-                // The table should be a sibling of this title div
                 Element table = null;
-                // Walk siblings after the title div
                 Element sibling = titleDiv.nextElementSibling();
                 while (sibling != null) {
                     if (sibling.tagName().equals("table")) {
@@ -271,15 +246,11 @@ public class RaceScraper {
             }
         }
 
-        // Second fallback: find the last large table with athlete links on the page
-        // (Men's events typically come after Women's events on TFRRS)
         Elements allTables = doc.select("table.tablesaw-xc");
         Element lastAthleteTable = null;
         for (Element table : allTables) {
-            // Check if this table has athlete links (individual results, not team results)
             Elements athleteLinks = table.select("a[href*=/athletes/]");
             if (!athleteLinks.isEmpty()) {
-                // Check if any team link is for a men's team (URL contains _m_ or college_m)
                 Elements teamLinks = table.select("a[href*=_college_m_], a[href*=_m_]");
                 if (!teamLinks.isEmpty()) {
                     lastAthleteTable = table;
@@ -308,7 +279,6 @@ public class RaceScraper {
             String time = times.get(i).trim();
             String link = links.get(i).trim();
 
-            // Skip empty/invalid entries
             if (name.isEmpty() || time.isEmpty()) {
                 continue;
             }
@@ -353,7 +323,6 @@ public class RaceScraper {
             }
         }
 
-        // Fallback: also check event list links
         Elements eventLinks = doc.select("ol.events-list a, select#quick-links-select option");
         for (Element el : eventLinks) {
             String text = el.text().trim().toLowerCase();
@@ -366,7 +335,7 @@ public class RaceScraper {
             }
         }
 
-        return 8000.0; // Default men's XC distance
+        return 8000.0; 
     }
 
 

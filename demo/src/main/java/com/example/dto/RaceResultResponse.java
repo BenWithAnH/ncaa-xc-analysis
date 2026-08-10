@@ -2,9 +2,7 @@ package com.example.dto;
 
 import java.util.List;
 
-/**
- * API response for a fully-rated race, including the CAF and all athlete ratings.
- */
+
 public class RaceResultResponse {
 
     private String meetUrl;

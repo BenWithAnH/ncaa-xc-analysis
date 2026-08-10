@@ -83,7 +83,6 @@ public class scrapePriors {
                     if (yearsOld > 0) {
                         double seconds = priors.parseTimeToSeconds(time);
                         if (seconds > 0) {
-                            // 3% improvement boost per year elapsed
                             double adjustedSeconds = seconds * Math.pow(0.97, yearsOld);
                             return String.format(java.util.Locale.US, "%.2f", adjustedSeconds);
                         }

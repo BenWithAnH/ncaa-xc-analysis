@@ -2,7 +2,6 @@
 import { ref } from 'vue';
 import axios from 'axios';
 
-// Store the array of meets returned by Spring Boot
 const meets = ref([]);
 const isLoading = ref(false);
 const errorMsg = ref('');
@@ -47,7 +46,6 @@ const fetchMeets = async () => {
         <td>{{ meet.name }}</td>
         <td>{{ meet.date }}</td>
         <td>
-            <!-- Emit the event and pass the URL instead of an <a> tag -->
             <button @click="emit('view-meet', meet.url)">View</button>
         </td>
         </tr>

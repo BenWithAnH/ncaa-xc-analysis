@@ -2,9 +2,7 @@ package com.example.dto;
 
 import java.util.List;
 
-/**
- * API response representing an athlete's profile — PRs and prior rating.
- */
+
 public class AthleteProfileResponse {
 
     private String gender;

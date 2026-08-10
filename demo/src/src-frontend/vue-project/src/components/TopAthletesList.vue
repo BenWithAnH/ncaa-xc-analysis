@@ -2,7 +2,6 @@
 import { ref } from 'vue';
 import axios from 'axios';
 
-// Store the array of athletes returned by Spring Boot
 const athletes = ref([]);
 const isLoading = ref(false);
 const errorMsg = ref('');

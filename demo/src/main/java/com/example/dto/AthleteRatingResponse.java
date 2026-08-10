@@ -1,8 +1,6 @@
 package com.example.dto;
 
-/**
- * API response representing a single athlete's rating from a race.
- */
+
 public class AthleteRatingResponse {
 
     private String name;

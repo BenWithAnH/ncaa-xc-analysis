@@ -14,7 +14,7 @@ public class MeetScraper {
 
     private static final String BASE_URL = "https://tfrrs.org/results_search_page.html";
     private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
-    private static final int PAGE_DELAY_MS = 2500; //2.5s between page fetches
+    private static final int PAGE_DELAY_MS = 2500; //2.5s between fetches
     private static final int TIMEOUT_MS = 15000;
 
 

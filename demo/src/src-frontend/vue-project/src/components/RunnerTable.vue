@@ -44,7 +44,6 @@ watch(() => props.targetMeetUrl, () => {
   <div>
     <div v-if="isLoading" class="text-muted">Loading Race Data...</div>
     
-    <!-- Displays only after raceData is fetched -->
     <section v-if="raceData" class="results-card" aria-labelledby="meet-analysis-title">
       <header>
         <h2 id="meet-analysis-title">Meet Analysis</h2>
@@ -54,7 +53,6 @@ watch(() => props.targetMeetUrl, () => {
         </div>
       </header>
 
-      <!-- Athlete Table: Checks if athletes array exists and has items -->
       <table v-if="raceData.athletes?.length" class="athlete-table">
         <caption class="sr-only">Meet Athlete Results</caption>
         <thead>
@@ -81,7 +79,6 @@ watch(() => props.targetMeetUrl, () => {
         </tbody>
       </table>
 
-      <!-- Empty State: Displays if the athletes array is empty -->
       <p v-else class="empty-state text-muted">
         No athlete data found for this meet.
       </p>
