@@ -40,14 +40,31 @@ public class GetCAF {
         ScrapePriors scraper = new ScrapePriors();
         Priors priorsCalculator = new Priors();
 
+        List<String> validLinks = athletes.stream()
+                .map(Athlete::link)
+                .filter(link -> link != null && !link.isEmpty())
+                .distinct()
+                .collect(Collectors.toList());
+
+        java.util.Map<String, com.example.entity.Athlete> cachedMap = new java.util.HashMap<>();
+        if (!validLinks.isEmpty()) {
+            athleteRepository.findAllById(validLinks).forEach(a -> cachedMap.put(a.getLink(), a));
+        }
+
         List<Double> validRatios = Collections.synchronizedList(new ArrayList<>());
         List<AthleteRating> preRatings = Collections.synchronizedList(new ArrayList<>());
+        List<com.example.entity.Athlete> newlyScrapedAthletes = Collections.synchronizedList(new ArrayList<>());
+        java.util.Set<String> newlyScrapedLinks = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
         List<CompletableFuture<Void>> futures = athletes.stream()
-                .map(athlete -> CompletableFuture.runAsync(() -> processAthlete(athlete, raceDistanceMeters, scraper, priorsCalculator, validRatios, preRatings)))
+                .map(athlete -> CompletableFuture.runAsync(() -> processAthlete(athlete, raceDistanceMeters, scraper, priorsCalculator, validRatios, preRatings, cachedMap, newlyScrapedAthletes, newlyScrapedLinks)))
                 .collect(Collectors.toList());
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+        if (!newlyScrapedAthletes.isEmpty()) {
+            athleteRepository.saveAll(newlyScrapedAthletes);
+        }
 
         this.lastCaf = calculateTrimmedAverageRatio(validRatios);
 
@@ -68,13 +85,13 @@ public class GetCAF {
         return athleteRatingsList;
     }
 
-    private void processAthlete(Athlete athlete, double raceDistanceMeters, ScrapePriors scraper, Priors priorsCalculator, List<Double> validRatios, List<AthleteRating> preRatings) {
+    private void processAthlete(Athlete athlete, double raceDistanceMeters, ScrapePriors scraper, Priors priorsCalculator, List<Double> validRatios, List<AthleteRating> preRatings, java.util.Map<String, com.example.entity.Athlete> cachedMap, List<com.example.entity.Athlete> newlyScrapedAthletes, java.util.Set<String> newlyScrapedLinks) {
         double priorRating = 0.0;
         
         if (athlete.link() != null && !athlete.link().isEmpty()) {
-            Optional<com.example.entity.Athlete> cachedAthlete = athleteRepository.findById(athlete.link());
-            if (cachedAthlete.isPresent() && cachedAthlete.get().getRating() != null && cachedAthlete.get().getRating() > 0) {
-                priorRating = cachedAthlete.get().getRating();
+            com.example.entity.Athlete cachedAthlete = cachedMap.get(athlete.link());
+            if (cachedAthlete != null && cachedAthlete.getRating() != null && cachedAthlete.getRating() > 0) {
+                priorRating = cachedAthlete.getRating();
             }
         }
 
@@ -92,10 +109,10 @@ public class GetCAF {
                 ArrayList<String> prs = scraper.getPRs(doc);
                 priorRating = priorsCalculator.getPriorRating(prs, gender);
 
-                // Save to cache
-                if (priorRating > 0.0) {
+                // Save to list for bulk insert without duplicates
+                if (priorRating > 0.0 && newlyScrapedLinks.add(athlete.link())) {
                     com.example.entity.Athlete newAthlete = new com.example.entity.Athlete(athlete.link(), athlete.name(), priorRating);
-                    athleteRepository.save(newAthlete);
+                    newlyScrapedAthletes.add(newAthlete);
                 }
             }
         }

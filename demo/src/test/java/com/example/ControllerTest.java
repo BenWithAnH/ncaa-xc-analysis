@@ -1,5 +1,7 @@
 package com.example;
 
+import com.example.controller.Controller;
+
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.times;
@@ -59,18 +61,19 @@ class ControllerTest {
     void testRateRace() {
         RaceRequest request = new RaceRequest();
         request.setMeetUrl("http://example.com/meet");
-        request.setFatigueCoefficient(1.05);
+        request.setMeetName("Example Meet");
+        request.setMeetDate("Nov 2, 2023");
 
         RaceResultResponse mockResponse = new RaceResultResponse();
         mockResponse.setMeetUrl("http://example.com/meet");
 
-        when(raceService.scrapeAndRateRace("http://example.com/meet", 1.05)).thenReturn(mockResponse);
+        when(raceService.scrapeAndRateRace("http://example.com/meet", "Example Meet", "Nov 2, 2023")).thenReturn(mockResponse);
 
         RaceResultResponse result = controller.rateRace(request);
 
         assertNotNull(result);
         assertEquals("http://example.com/meet", result.getMeetUrl());
-        verify(raceService, times(1)).scrapeAndRateRace("http://example.com/meet", 1.05);
+        verify(raceService, times(1)).scrapeAndRateRace("http://example.com/meet", "Example Meet", "Nov 2, 2023");
     }
 
     @Test

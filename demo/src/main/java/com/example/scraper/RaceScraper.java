@@ -27,7 +27,19 @@ public class RaceScraper {
     public record Athlete(String name, String time, String link) {
     }
 
-    private int nameIndex = -1;
+    private int findColumnIndex(Element el, String colName) {
+        if (el == null) return -1;
+        Element headerRow = el.selectFirst("tr");
+        if (headerRow != null) {
+            Elements headers = headerRow.select("th, td");
+            for (int i = 0; i < headers.size(); i++) {
+                if (headers.get(i).text().trim().equalsIgnoreCase(colName)) {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
 
     /**
      * Extracts all values from a named column in an HTML table.
@@ -35,24 +47,11 @@ public class RaceScraper {
      */
     public List<String> getColumn(Element el, String rowName) {
         List<String> columnValues = new ArrayList<>();
-        Element headerRow = el.selectFirst("tr");
-        int colIndex = -1;
-        if (headerRow != null) {
-            Elements headers = headerRow.select("th, td");
-            for (int i = 0; i < headers.size(); i++) {
-                if (headers.get(i).text().equalsIgnoreCase(rowName)) {
-                    colIndex = i;
-                    if (rowName.equals("Name"))
-                        nameIndex = i;
-                    break;
-                }
-            }
-        }
+        int colIndex = findColumnIndex(el, rowName);
         if (colIndex != -1) {
             Elements rows = el.select("tr");
             for (int i = 1; i < rows.size(); i++) {
-                Element row = rows.get(i);
-                Elements cells = row.select("th, td");
+                Elements cells = rows.get(i).select("th, td");
                 if (cells.size() > colIndex) {
                     columnValues.add(cells.get(colIndex).text());
                 }
@@ -63,24 +62,17 @@ public class RaceScraper {
 
     /**
      * Extracts athlete profile links from the Name column of an HTML table.
-     * Must be called after getColumn(el, "Name") so that nameIndex is set.
      */
     public List<String> getAthleteLink(Element el) {
         List<String> links = new ArrayList<>();
-        if (nameIndex != -1) {
+        int colIndex = findColumnIndex(el, "Name");
+        if (colIndex != -1) {
             Elements rows = el.select("tr");
             for (int i = 1; i < rows.size(); i++) {
-                Element row = rows.get(i);
-                Elements cells = row.select("th, td");
-                if (cells.size() > nameIndex) {
-                    Element nameCell = cells.get(nameIndex);
-                    Element link = nameCell.selectFirst("a");
-                    if (link != null) {
-                        String url = link.absUrl("href").replaceAll("\\s+", "");
-                        links.add(url);
-                    } else {
-                        links.add(""); 
-                    }
+                Elements cells = rows.get(i).select("th, td");
+                if (cells.size() > colIndex) {
+                    Element link = cells.get(colIndex).selectFirst("a");
+                    links.add(link != null ? link.absUrl("href").replaceAll("\\s+", "") : "");
                 }
             }
         }
@@ -102,16 +94,7 @@ public class RaceScraper {
                     .get();
 
             Element el = doc.selectFirst("table:contains(Year)");
-            List<String> names = getColumn(el, "Name");
-            List<String> times = getColumn(el, "Time");
-            List<String> links = getAthleteLink(el);
-            List<Athlete> athletes = new ArrayList<>();
-            int limit = Math.min(names.size(), Math.min(times.size(), links.size()));
-            for (int i = 0; i < limit; i++) {
-                athletes.add(new Athlete(names.get(i), times.get(i), links.get(i)));
-            }
-
-            return athletes;
+            return extractAthletesFromTable(el);
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -129,8 +112,6 @@ public class RaceScraper {
      *         on failure
      */
     public List<Athlete> scrapeMensRace(String meetUrl) {
-        List<Athlete> athletes = new ArrayList<>();
-
         try {
             Thread.sleep(MEET_DELAY_MS);
 
@@ -140,74 +121,7 @@ public class RaceScraper {
                     .maxBodySize(0) 
                     .get();
 
-
-            Elements headings = doc.select("h3");
-            Element mensIndividualTable = null;
-            String eventName = "";
-
-            for (Element h3 : headings) {
-                String text = h3.text().trim();
-                if (text.toLowerCase().contains("men")
-                        && !text.toLowerCase().contains("women")
-                        && text.toLowerCase().contains("cc")
-                        && text.toLowerCase().contains("individual")) {
-
-                    eventName = text;
-                    Element container = h3.parent();
-                    if (container != null) {
-                        Element tableParent = container.parent();
-                        if (tableParent != null) {
-                            mensIndividualTable = tableParent.selectFirst("table");
-                        }
-                    }
-
-                    if (mensIndividualTable == null) {
-                        Element current = h3;
-                        while (current != null) {
-                            Element next = current.nextElementSibling();
-                            if (next != null && next.tagName().equals("table")) {
-                                mensIndividualTable = next;
-                                break;
-                            }
-                            if (next != null && next.selectFirst("table") != null) {
-                                mensIndividualTable = next.selectFirst("table");
-                                break;
-                            }
-                            current = current.parent();
-                            if (current != null && current.tagName().equals("div")) {
-                                Element nextDiv = current.nextElementSibling();
-                                if (nextDiv != null) {
-                                    Element tbl = nextDiv.selectFirst("table");
-                                    if (tbl != null) {
-                                        mensIndividualTable = tbl;
-                                        break;
-                                    }
-                                }
-                            }
-                            break;
-                        }
-                    }
-
-                    if (mensIndividualTable != null) {
-                        break;
-                    }
-                }
-            }
-
-            if (mensIndividualTable == null) {
-                mensIndividualTable = findMensTableFallback(doc);
-            }
-
-            if (mensIndividualTable == null) {
-                System.out.println("[RaceScraper] No men's individual results table found at: " + meetUrl);
-                return athletes;
-            }
-
-            athletes = extractAthletesFromTable(mensIndividualTable);
-
-            if (!eventName.isEmpty()) {
-                System.out.println("[RaceScraper] Found " + athletes.size() + " athletes in: " + eventName);
-            }
+            return scrapeMensRaceFromDoc(doc, meetUrl);
 
         } catch (IOException e) {
             System.err.println("[RaceScraper] Error fetching meet page: " + meetUrl + " - " + e.getMessage());
@@ -216,18 +130,120 @@ public class RaceScraper {
             System.err.println("[RaceScraper] Interrupted while scraping: " + meetUrl);
         }
 
+        return new ArrayList<>();
+    }
+
+    /**
+     * Scrapes the men's individual race results from a pre-fetched TFRRS meet document.
+     * Use this to avoid duplicate HTTP requests when you already have the document.
+     *
+     * @param doc  the pre-fetched Jsoup Document
+     * @param meetUrl the original URL (for logging only)
+     * @return list of Athlete records with name, time, and profile link; empty list
+     *         on failure
+     */
+    public List<Athlete> scrapeMensRaceFromDoc(Document doc, String meetUrl) {
+        List<Athlete> athletes = new ArrayList<>();
+
+        Elements headings = doc.select("h3");
+        List<Element> mensTables = new ArrayList<>();
+        String eventName = "";
+
+        for (Element h3 : headings) {
+            String text = h3.text().trim().toLowerCase();
+            if (text.contains("men") && !text.contains("women")) {
+                eventName = text;
+                Element mensIndividualTable = null;
+                Element container = h3.parent();
+                if (container != null) {
+                    Element tableParent = container.parent();
+                    if (tableParent != null) {
+                        mensIndividualTable = tableParent.selectFirst("table");
+                    }
+                }
+
+                if (mensIndividualTable == null) {
+                    Element current = h3;
+                    while (current != null) {
+                        Element next = current.nextElementSibling();
+                        if (next != null && next.tagName().equals("table")) {
+                            mensIndividualTable = next;
+                            break;
+                        }
+                        if (next != null && next.selectFirst("table") != null) {
+                            mensIndividualTable = next.selectFirst("table");
+                            break;
+                        }
+                        current = current.parent();
+                        if (current != null && current.tagName().equals("div")) {
+                            Element nextDiv = current.nextElementSibling();
+                            if (nextDiv != null) {
+                                Element tbl = nextDiv.selectFirst("table");
+                                if (tbl != null) {
+                                    mensIndividualTable = tbl;
+                                    break;
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+
+                if (mensIndividualTable != null) {
+                    if (tableHasTimeColumn(mensIndividualTable)) {
+                        mensTables.add(mensIndividualTable);
+                    }
+                }
+            }
+        }
+
+        if (mensTables.isEmpty()) {
+            mensTables = findMensTablesFallback(doc);
+        }
+
+        if (mensTables.isEmpty()) {
+            System.out.println("[RaceScraper] No men's individual results table found at: " + meetUrl);
+            return athletes;
+        }
+
+        for (Element table : mensTables) {
+            athletes.addAll(extractAthletesFromTable(table));
+        }
+
+        if (!eventName.isEmpty()) {
+            System.out.println("[RaceScraper] Found " + athletes.size() + " athletes in: " + eventName + " (and potentially other men's races)");
+        }
+
         return athletes;
+    }
+
+    /**
+     * Checks whether a table has a "TIME" column header (case-insensitive).
+     * This is used to distinguish individual results tables (which have a Time column)
+     * from team results tables (which don't).
+     */
+    private boolean tableHasTimeColumn(Element table) {
+        Element headerRow = table.selectFirst("tr");
+        if (headerRow != null) {
+            for (Element header : headerRow.select("th, td")) {
+                if (header.text().trim().equalsIgnoreCase("time")) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**
      * Fallback method: find the men's individual results table by looking for
      * tables that contain athlete links and are associated with a "Men" event.
      */
-    private Element findMensTableFallback(Document doc) {
+    private List<Element> findMensTablesFallback(Document doc) {
+        List<Element> tables = new ArrayList<>();
         Elements titleDivs = doc.select("div.custom-table-title");
         for (Element titleDiv : titleDivs) {
             String titleText = titleDiv.text().toLowerCase();
-            if (titleText.contains("men") && !titleText.contains("women") && titleText.contains("individual")) {
+            if (titleText.contains("men") && !titleText.contains("women")) {
                 Element table = null;
                 Element sibling = titleDiv.nextElementSibling();
                 while (sibling != null) {
@@ -240,25 +256,26 @@ public class RaceScraper {
                         break;
                     sibling = sibling.nextElementSibling();
                 }
-                if (table != null) {
-                    return table;
+                if (table != null && tableHasTimeColumn(table)) {
+                    tables.add(table);
                 }
             }
         }
 
-        Elements allTables = doc.select("table.tablesaw-xc");
-        Element lastAthleteTable = null;
-        for (Element table : allTables) {
-            Elements athleteLinks = table.select("a[href*=/athletes/]");
-            if (!athleteLinks.isEmpty()) {
-                Elements teamLinks = table.select("a[href*=_college_m_], a[href*=_m_]");
-                if (!teamLinks.isEmpty()) {
-                    lastAthleteTable = table;
+        if (tables.isEmpty()) {
+            Elements allTables = doc.select("table.tablesaw-xc");
+            for (Element table : allTables) {
+                Elements athleteLinks = table.select("a[href*=/athletes/]");
+                if (!athleteLinks.isEmpty()) {
+                    Elements teamLinks = table.select("a[href*=_college_m_], a[href*=_m_]");
+                    if (!teamLinks.isEmpty() && tableHasTimeColumn(table)) {
+                        tables.add(table);
+                    }
                 }
             }
         }
 
-        return lastAthleteTable;
+        return tables;
     }
 
     /**
@@ -266,24 +283,28 @@ public class RaceScraper {
      * getAthleteLink().
      */
     private List<Athlete> extractAthletesFromTable(Element table) {
-        // Use local column extraction methods
-        List<String> names = getColumn(table, "Name");
-        List<String> times = getColumn(table, "Time");
-        List<String> links = getAthleteLink(table);
+        if (table == null) return new ArrayList<>();
+        int nameCol = findColumnIndex(table, "Name");
+        int timeCol = findColumnIndex(table, "Time");
+        if (nameCol == -1 || timeCol == -1) return new ArrayList<>();
 
         List<Athlete> athletes = new ArrayList<>();
-        int limit = Math.min(names.size(), Math.min(times.size(), links.size()));
+        Elements rows = table.select("tr");
+        for (int i = 1; i < rows.size(); i++) {
+            Elements cells = rows.get(i).select("th, td");
+            if (cells.size() > nameCol && cells.size() > timeCol) {
+                String name = cells.get(nameCol).text().trim();
+                String time = cells.get(timeCol).text().trim();
 
-        for (int i = 0; i < limit; i++) {
-            String name = names.get(i).trim();
-            String time = times.get(i).trim();
-            String link = links.get(i).trim();
+                if (name.isEmpty() || time.isEmpty()) {
+                    continue;
+                }
 
-            if (name.isEmpty() || time.isEmpty()) {
-                continue;
+                Element linkEl = cells.get(nameCol).selectFirst("a");
+                String link = linkEl != null ? linkEl.absUrl("href").replaceAll("\\s+", "") : "";
+
+                athletes.add(new Athlete(name, time, link));
             }
-
-            athletes.add(new Athlete(name, time, link));
         }
 
         return athletes;
@@ -313,29 +334,46 @@ public class RaceScraper {
         Elements headings = doc.select("h3");
         for (Element h3 : headings) {
             String text = h3.text().trim().toLowerCase();
-            if (text.contains("men") && !text.contains("women") && text.contains("cc")) {
-                // Look for patterns like "8k", "10k", "5k", "6k"
-                java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)k")
-                        .matcher(text);
-                if (m.find()) {
-                    return Double.parseDouble(m.group(1)) * 1000.0;
-                }
+            if (text.contains("men") && !text.contains("women")) {
+                double distance = parseDistanceFromText(text);
+                if (distance > 0) return distance;
             }
         }
 
         Elements eventLinks = doc.select("ol.events-list a, select#quick-links-select option");
         for (Element el : eventLinks) {
             String text = el.text().trim().toLowerCase();
-            if (text.contains("men") && !text.contains("women") && text.contains("cc")) {
-                java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)k")
-                        .matcher(text);
-                if (m.find()) {
-                    return Double.parseDouble(m.group(1)) * 1000.0;
-                }
+            if (text.contains("men") && !text.contains("women")) {
+                double distance = parseDistanceFromText(text);
+                if (distance > 0) return distance;
             }
         }
 
         return 8000.0; 
+    }
+
+    /**
+     * Parses distance from event text. Handles formats like:
+     * - "men 8k run cc" → 8000.0
+     * - "men's 8000 meters" → 8000.0
+     * - "men 10k run cc" → 10000.0
+     */
+    private double parseDistanceFromText(String text) {
+        if (text == null) return 0.0;
+        String normalized = text.replace(",", "");
+        // Try "Nk" pattern first (e.g., "8k", "10k")
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)k")
+                .matcher(normalized);
+        if (m.find()) {
+            return Double.parseDouble(m.group(1)) * 1000.0;
+        }
+        // Try "N meters" or "N meter" pattern (e.g., "8000 meters", "10,000 meters")
+        m = java.util.regex.Pattern.compile("(\\d+)\\s*meters?")
+                .matcher(normalized);
+        if (m.find()) {
+            return Double.parseDouble(m.group(1));
+        }
+        return 0.0;
     }
 
 

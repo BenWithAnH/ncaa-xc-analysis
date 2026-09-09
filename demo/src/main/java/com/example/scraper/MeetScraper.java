@@ -23,10 +23,14 @@ public class MeetScraper {
 
 
     public List<MeetInfo> scrapeXCMeets(int maxPages) {
+        return scrapeXCMeetsSinceYear(0, maxPages);
+    }
+
+    public List<MeetInfo> scrapeXCMeetsSinceYear(int startYear, int maxPagesLimit) {
         List<MeetInfo> meets = new ArrayList<>();
 
-        for (int page = 1; page <= maxPages; page++) {
-            System.out.println("[MeetScraper] Fetching page " + page + " of " + maxPages + "...");
+        for (int page = 1; page <= maxPagesLimit; page++) {
+            System.out.println("[MeetScraper] Fetching page " + page + " (looking for meets since " + startYear + ")...");
 
             try {
                 String url = BASE_URL + "?with_sports=xc&page=" + page;
@@ -41,10 +45,31 @@ public class MeetScraper {
                     System.out.println("No meets found on page " + page );
                     break;
                 }
+                
+                int oldMeetsCount = 0;
+                for (MeetInfo meet : pageMeets) {
+                    if (startYear <= 0) {
+                        meets.add(meet);
+                        continue;
+                    }
+                    int meetYear = extractYearFromDate(meet.date());
+                    if (meetYear > 0 && meetYear < startYear) {
+                        oldMeetsCount++;
+                        continue;
+                    }
+                    if (meetYear >= startYear) {
+                        meets.add(meet);
+                    }
+                }
 
-                meets.addAll(pageMeets);
+                // Stop only when the vast majority (80%+) of a page's meets predate the start year
+                if (startYear > 0 && !pageMeets.isEmpty() && oldMeetsCount >= pageMeets.size() * 0.8) {
+                    System.out.println("Reached primarily meets prior to " + startYear 
+                            + " (" + oldMeetsCount + "/" + pageMeets.size() + " old). Stopping.");
+                    break;
+                }
 
-                if (page < maxPages) {
+                if (page < maxPagesLimit) {
                     Thread.sleep(PAGE_DELAY_MS);
                 }
 
@@ -60,6 +85,19 @@ public class MeetScraper {
         return meets;
     }
 
+    private int extractYearFromDate(String dateStr) {
+        if (dateStr == null || dateStr.isEmpty()) return -1;
+        try {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\b(20\\d{2})\\b").matcher(dateStr);
+            int year = -1;
+            while (m.find()) {
+                year = Integer.parseInt(m.group(1));
+            }
+            return year;
+        } catch (Exception e) {
+            return -1;
+        }
+    }
 
     private List<MeetInfo> parseMeetPage(Document doc) {
         List<MeetInfo> meets = new ArrayList<>();

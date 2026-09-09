@@ -43,13 +43,14 @@ public class Controller {
      * and returns rated athletes.
      *
      * POST /api/race/rate
-     * Body: { "meetUrl": "https://tfrrs.org/results/xc/26324/Jasper_Fall_XC_Invitational", "fatigueCoefficient": 1.06 }
+     * Body: { "meetUrl": "https://tfrrs.org/...", "meetName": "Jasper Fall XC", "meetDate": "Nov 2, 2023" }
      */
     @PostMapping("/race/rate")
     public RaceResultResponse rateRace(@RequestBody RaceRequest request) {
         return raceService.scrapeAndRateRace(
                 request.getMeetUrl(),
-                request.getFatigueCoefficient());
+                request.getMeetName(),
+                request.getMeetDate());
     }
 
     /**
@@ -81,6 +82,17 @@ public class Controller {
     public String bulkScrape(@RequestParam(defaultValue = "1") int maxPages) {
         int totalSaved = raceService.bulkScrapeMeets(maxPages);
         return "Bulk scrape completed. Saved " + totalSaved + " athletes across " + maxPages + " page(s) of meets.";
+    }
+    
+    /**
+     * Bulk scrapes meets from TFRRS going back to a specific year and saves results.
+     *
+     * POST /api/meets/bulk-scrape-since-year?startYear=2023&maxPages=50
+     */
+    @PostMapping("/meets/bulk-scrape-since-year")
+    public String bulkScrapeSinceYear(@RequestParam int startYear, @RequestParam(defaultValue = "50") int maxPages) {
+        int totalSaved = raceService.bulkScrapeMeetsSinceYear(startYear, maxPages);
+        return "Bulk scrape completed since year " + startYear + ". Saved " + totalSaved + " athletes.";
     }
 
     /**
