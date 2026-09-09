@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.dto.AthleteProfileResponse;
 import com.example.dto.AthleteRatingResponse;
+import com.example.dto.IngestionReport;
 import com.example.dto.MeetResponse;
 import com.example.dto.RaceRequest;
 import com.example.dto.RaceResultResponse;
@@ -103,5 +104,15 @@ public class Controller {
     @GetMapping("/athlete/profile")
     public AthleteProfileResponse getAthleteProfile(@RequestParam String link) {
         return raceService.getAthleteProfile(link);
+    }
+
+    /**
+     * Retrieves recent ETL reconciliation reports from meet scraping.
+     *
+     * GET /api/meets/reconciliation-reports
+     */
+    @GetMapping("/meets/reconciliation-reports")
+    public List<IngestionReport> getReconciliationReports() {
+        return raceService.getRecentIngestionReports();
     }
 }

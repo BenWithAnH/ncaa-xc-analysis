@@ -27,6 +27,16 @@ public class RaceScraper {
     public record Athlete(String name, String time, String link) {
     }
 
+    public record ScrapedRaceAudit(
+            List<Athlete> athletes,
+            int totalDataRows,
+            int headerRows,
+            int skippedNoTime,
+            int skippedNoLink,
+            List<String> anomalies
+    ) {
+    }
+
     private int findColumnIndex(Element el, String colName) {
         if (el == null) return -1;
         Element headerRow = el.selectFirst("tr");
@@ -143,7 +153,24 @@ public class RaceScraper {
      *         on failure
      */
     public List<Athlete> scrapeMensRaceFromDoc(Document doc, String meetUrl) {
+        return scrapeMensRaceWithAudit(doc, meetUrl).athletes();
+    }
+
+    /**
+     * Scrapes the men's individual race results from a pre-fetched TFRRS meet document
+     * along with row-level accounting metrics (total data rows, skipped no-time, skipped unattached).
+     *
+     * @param doc     the pre-fetched Jsoup Document
+     * @param meetUrl the original URL (for logging only)
+     * @return ScrapedRaceAudit containing athletes and accounting metrics
+     */
+    public ScrapedRaceAudit scrapeMensRaceWithAudit(Document doc, String meetUrl) {
         List<Athlete> athletes = new ArrayList<>();
+        List<String> anomalies = new ArrayList<>();
+        int totalDataRows = 0;
+        int headerRows = 0;
+        int skippedNoTime = 0;
+        int skippedNoLink = 0;
 
         Elements headings = doc.select("h3");
         List<Element> mensTables = new ArrayList<>();
@@ -203,18 +230,24 @@ public class RaceScraper {
 
         if (mensTables.isEmpty()) {
             System.out.println("[RaceScraper] No men's individual results table found at: " + meetUrl);
-            return athletes;
+            return new ScrapedRaceAudit(athletes, 0, 0, 0, 0, List.of("No men's individual results table found at: " + meetUrl));
         }
 
         for (Element table : mensTables) {
-            athletes.addAll(extractAthletesFromTable(table));
+            ScrapedRaceAudit tableAudit = extractAthletesWithAudit(table);
+            athletes.addAll(tableAudit.athletes());
+            totalDataRows += tableAudit.totalDataRows();
+            headerRows += tableAudit.headerRows();
+            skippedNoTime += tableAudit.skippedNoTime();
+            skippedNoLink += tableAudit.skippedNoLink();
+            anomalies.addAll(tableAudit.anomalies());
         }
 
         if (!eventName.isEmpty()) {
             System.out.println("[RaceScraper] Found " + athletes.size() + " athletes in: " + eventName + " (and potentially other men's races)");
         }
 
-        return athletes;
+        return new ScrapedRaceAudit(athletes, totalDataRows, headerRows, skippedNoTime, skippedNoLink, anomalies);
     }
 
     /**
@@ -279,35 +312,86 @@ public class RaceScraper {
     }
 
     /**
+     * Extracts athletes from a results table while performing row-level accounting.
+     * Categorizes rows into valid athletes, DNF/DNS/no-time, unattached (no profile link),
+     * and subheader/divider rows.
+     */
+    public ScrapedRaceAudit extractAthletesWithAudit(Element table) {
+        if (table == null) {
+            return new ScrapedRaceAudit(new ArrayList<>(), 0, 0, 0, 0, List.of("Null table passed"));
+        }
+        int nameCol = findColumnIndex(table, "Name");
+        int timeCol = findColumnIndex(table, "Time");
+        if (nameCol == -1 || timeCol == -1) {
+            return new ScrapedRaceAudit(new ArrayList<>(), 0, 0, 0, 0,
+                    List.of("Required columns (Name/Time) missing from table headers"));
+        }
+
+        List<Athlete> athletes = new ArrayList<>();
+        List<String> anomalies = new ArrayList<>();
+        int totalDataRows = 0;
+        int headerRows = 0;
+        int skippedNoTime = 0;
+        int skippedNoLink = 0;
+
+        Elements rows = table.select("tr");
+        for (int i = 1; i < rows.size(); i++) {
+            Element row = rows.get(i);
+            Elements cells = row.select("th, td");
+
+            // Subheaders / repeated headers
+            boolean isHeader = !row.select("th").isEmpty() && row.select("td").isEmpty();
+            if (isHeader) {
+                headerRows++;
+                continue;
+            }
+
+            if (cells.size() <= nameCol || cells.size() <= timeCol) {
+                headerRows++;
+                continue;
+            }
+
+            String name = cells.get(nameCol).text().trim();
+            String time = cells.get(timeCol).text().trim();
+
+            if (name.isEmpty() && time.isEmpty()) {
+                headerRows++;
+                continue;
+            }
+
+            totalDataRows++;
+
+            if (time.isEmpty() || isNonFinishTime(time)) {
+                skippedNoTime++;
+                continue;
+            }
+
+            Element linkEl = cells.get(nameCol).selectFirst("a");
+            String link = linkEl != null ? linkEl.absUrl("href").replaceAll("\\s+", "") : "";
+
+            if (link.isEmpty()) {
+                skippedNoLink++;
+                continue;
+            }
+
+            athletes.add(new Athlete(name, time, link));
+        }
+
+        return new ScrapedRaceAudit(athletes, totalDataRows, headerRows, skippedNoTime, skippedNoLink, anomalies);
+    }
+
+    private boolean isNonFinishTime(String time) {
+        if (time == null || time.isEmpty()) return true;
+        String t = time.toUpperCase().trim();
+        return t.equals("DNF") || t.equals("DNS") || t.equals("DQ") || t.equals("SCR") || t.equals("NT") || t.equals("FS");
+    }
+
+    /**
      * Extracts athletes from a results table using getColumn() and
      * getAthleteLink().
      */
     private List<Athlete> extractAthletesFromTable(Element table) {
-        if (table == null) return new ArrayList<>();
-        int nameCol = findColumnIndex(table, "Name");
-        int timeCol = findColumnIndex(table, "Time");
-        if (nameCol == -1 || timeCol == -1) return new ArrayList<>();
-
-        List<Athlete> athletes = new ArrayList<>();
-        Elements rows = table.select("tr");
-        for (int i = 1; i < rows.size(); i++) {
-            Elements cells = rows.get(i).select("th, td");
-            if (cells.size() > nameCol && cells.size() > timeCol) {
-                String name = cells.get(nameCol).text().trim();
-                String time = cells.get(timeCol).text().trim();
-
-                if (name.isEmpty() || time.isEmpty()) {
-                    continue;
-                }
-
-                Element linkEl = cells.get(nameCol).selectFirst("a");
-                String link = linkEl != null ? linkEl.absUrl("href").replaceAll("\\s+", "") : "";
-
-                athletes.add(new Athlete(name, time, link));
-            }
-        }
-
-        return athletes;
+        return extractAthletesWithAudit(table).athletes();
     }
 
     /**

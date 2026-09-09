@@ -16,6 +16,7 @@ import com.example.scraper.RaceScraper;
 import com.example.scraper.RaceScraper.Athlete;
 import com.example.dto.AthleteProfileResponse;
 import com.example.dto.AthleteRatingResponse;
+import com.example.dto.IngestionReport;
 import com.example.dto.MeetResponse;
 import com.example.dto.RaceResultResponse;
 import com.example.GetCAF;
@@ -33,14 +34,24 @@ import com.example.repository.RaceResultRepository;
 @Service
 public class RaceService {
 
-
-
     private final AthleteRepository athleteRepository;
     private final RaceResultRepository raceResultRepository;
+    private final List<IngestionReport> recentReports = java.util.Collections.synchronizedList(new ArrayList<>());
 
     public RaceService(AthleteRepository athleteRepository, RaceResultRepository raceResultRepository) {
         this.athleteRepository = athleteRepository;
         this.raceResultRepository = raceResultRepository;
+    }
+
+    private void recordReport(IngestionReport report) {
+        if (recentReports.size() >= 100) {
+            recentReports.remove(0);
+        }
+        recentReports.add(report);
+    }
+
+    public List<IngestionReport> getRecentIngestionReports() {
+        return new ArrayList<>(recentReports);
     }
 
     /**
@@ -78,17 +89,24 @@ public class RaceService {
 
         double distance = raceScraper.detectRaceDistanceFromDoc(doc);
 
-        List<Athlete> athletes = raceScraper.scrapeMensRaceFromDoc(doc, meetUrl);
-        if (athletes.isEmpty()) {
+        RaceScraper.ScrapedRaceAudit audit = raceScraper.scrapeMensRaceWithAudit(doc, meetUrl);
+        List<Athlete> athletes = audit.athletes();
+        String actualMeetName = (meetName == null || meetName.trim().isEmpty()) ? extractMeetName(meetUrl) : meetName;
+        String actualDate = (meetDate == null || meetDate.trim().isEmpty()) ? "TBD" : meetDate;
+
+        if (athletes.isEmpty() && audit.totalDataRows() == 0) {
+            IngestionReport emptyReport = new IngestionReport(
+                actualMeetName, meetUrl, actualDate, 0, 0, 0, 0, 0, 0, true,
+                List.of("No men's individual results table found at: " + meetUrl)
+            );
+            recordReport(emptyReport);
+            System.out.print(emptyReport.toFormattedBanner());
             return new RaceResultResponse(meetUrl, distance, 1.0, new ArrayList<>());
         }
 
         List<GetCAF.AthleteRating> ratings = cafCalculator.getCAF(athletes, distance);
 
         List<AthleteRatingResponse> dtoList = new ArrayList<>();
-        
-        String actualMeetName = (meetName == null || meetName.trim().isEmpty()) ? extractMeetName(meetUrl) : meetName;
-        String actualDate = (meetDate == null || meetDate.trim().isEmpty()) ? "TBD" : meetDate;
 
         java.util.Set<String> existingResultLinks = raceResultRepository.findByMeetName(actualMeetName)
                 .stream().map(RaceResult::getAthleteLink).collect(Collectors.toSet());
@@ -105,6 +123,7 @@ public class RaceService {
 
         List<RaceResult> resultsToSave = new ArrayList<>();
         List<com.example.entity.Athlete> athletesToSave = new ArrayList<>();
+        int alreadyInDb = 0;
 
         for (GetCAF.AthleteRating r : ratings) {
             dtoList.add(new AthleteRatingResponse(r.name(), r.time(), r.link(), r.rating()));
@@ -121,6 +140,8 @@ public class RaceService {
                     );
                     resultsToSave.add(result);
                     existingResultLinks.add(r.link());
+                } else {
+                    alreadyInDb++;
                 }
 
                 com.example.entity.Athlete athlete = existingAthletes.get(r.link());
@@ -165,6 +186,28 @@ public class RaceService {
         if (!athletesToSave.isEmpty()) {
             athleteRepository.saveAll(athletesToSave);
         }
+
+        int savedCount = resultsToSave.size();
+        int droppedInRating = Math.max(0, athletes.size() - ratings.size());
+        int accounted = savedCount + alreadyInDb + audit.skippedNoTime() + audit.skippedNoLink() + droppedInRating;
+        int discrepancy = audit.totalDataRows() - accounted;
+        boolean isBalanced = (discrepancy == 0);
+
+        List<String> anomalies = new ArrayList<>(audit.anomalies());
+        if (droppedInRating > 0) {
+            anomalies.add(droppedInRating + " athlete(s) dropped during rating/CAF calculation (invalid time or unparseable)");
+        }
+        if (!isBalanced) {
+            anomalies.add(String.format("Accounting mismatch: totalDataRows=%d, saved=%d, alreadyInDb=%d, skippedNoTime=%d, skippedNoLink=%d, droppedInRating=%d (discrepancy=%d)",
+                audit.totalDataRows(), savedCount, alreadyInDb, audit.skippedNoTime(), audit.skippedNoLink(), droppedInRating, discrepancy));
+        }
+
+        IngestionReport report = new IngestionReport(
+            actualMeetName, meetUrl, actualDate, audit.totalDataRows(), savedCount, alreadyInDb,
+            audit.skippedNoTime(), audit.skippedNoLink(), discrepancy, isBalanced, anomalies
+        );
+        recordReport(report);
+        System.out.print(report.toFormattedBanner());
 
         return new RaceResultResponse(meetUrl, distance, cafCalculator.lastCaf, dtoList);
     }
@@ -222,9 +265,22 @@ public class RaceService {
      * @return number of results saved
      */
     public int bulkScrapeAndSaveRaw(String meetUrl, String meetName, String meetDate) {
+        return bulkScrapeAndSaveRawWithReport(meetUrl, meetName, meetDate).savedToDb();
+    }
+
+    /**
+     * Fast bulk scraping with ETL reconciliation: fetches a meet page, extracts men's race results,
+     * reconciles extracted rows against DB existing and skipped rows, saves new results,
+     * and logs a structured [ETL-RECONCILE] report.
+     *
+     * @param meetUrl  TFRRS meet URL
+     * @param meetName meet name for storage
+     * @param meetDate meet date string
+     * @return IngestionReport containing complete reconciliation metrics
+     */
+    public IngestionReport bulkScrapeAndSaveRawWithReport(String meetUrl, String meetName, String meetDate) {
         RaceScraper raceScraper = new RaceScraper();
 
-        // Fetch the meet page once
         Document doc;
         try {
             Thread.sleep(2000); // rate limit
@@ -234,32 +290,56 @@ public class RaceService {
                     .maxBodySize(0)
                     .get();
         } catch (IOException e) {
-            System.err.println("[BulkScrape] Error fetching meet page: " + meetUrl + " - " + e.getMessage());
-            return 0;
+            String err = "[BulkScrape] Error fetching meet page: " + meetUrl + " - " + e.getMessage();
+            System.err.println(err);
+            IngestionReport failedReport = new IngestionReport(
+                meetName, meetUrl, meetDate, 0, 0, 0, 0, 0, 0, false, List.of(err)
+            );
+            recordReport(failedReport);
+            return failedReport;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return 0;
+            IngestionReport failedReport = new IngestionReport(
+                meetName, meetUrl, meetDate, 0, 0, 0, 0, 0, 0, false, List.of("Interrupted while fetching " + meetUrl)
+            );
+            recordReport(failedReport);
+            return failedReport;
         }
 
         double distance = raceScraper.detectRaceDistanceFromDoc(doc);
-        List<Athlete> athletes = raceScraper.scrapeMensRaceFromDoc(doc, meetUrl);
-
-        if (athletes.isEmpty()) {
-            System.out.println("[BulkScrape] No athletes found at: " + meetUrl);
-            return 0;
-        }
+        RaceScraper.ScrapedRaceAudit audit = raceScraper.scrapeMensRaceWithAudit(doc, meetUrl);
+        List<Athlete> athletes = audit.athletes();
 
         String actualMeetName = (meetName == null || meetName.trim().isEmpty()) ? extractMeetName(meetUrl) : meetName;
         String actualDate = (meetDate == null || meetDate.trim().isEmpty()) ? "TBD" : meetDate;
+
+        if (athletes.isEmpty() && audit.totalDataRows() == 0) {
+            System.out.println("[BulkScrape] No athletes found at: " + meetUrl);
+            IngestionReport emptyReport = new IngestionReport(
+                actualMeetName, meetUrl, actualDate, 0, 0, 0, 0, 0, 0, true,
+                List.of("No men's individual results table found at: " + meetUrl)
+            );
+            recordReport(emptyReport);
+            System.out.print(emptyReport.toFormattedBanner());
+            return emptyReport;
+        }
 
         // Check which results already exist for this meet to avoid duplicates
         java.util.Set<String> existingResultLinks = raceResultRepository.findByMeetName(actualMeetName)
                 .stream().map(RaceResult::getAthleteLink).collect(Collectors.toSet());
 
         List<RaceResult> resultsToSave = new ArrayList<>();
+        int alreadyInDb = 0;
+        List<String> anomalies = new ArrayList<>(audit.anomalies());
 
         for (Athlete a : athletes) {
-            if (a.link() != null && !a.link().isEmpty() && !existingResultLinks.contains(a.link())) {
+            if (a.link() == null || a.link().isEmpty()) {
+                anomalies.add("Athlete missing link encountered during save: " + a.name());
+                continue;
+            }
+            if (existingResultLinks.contains(a.link())) {
+                alreadyInDb++;
+            } else {
                 RaceResult result = new RaceResult(
                         a.link(),
                         a.name(),
@@ -277,8 +357,36 @@ public class RaceService {
             raceResultRepository.saveAll(resultsToSave);
         }
 
-        System.out.println("[BulkScrape] Saved " + resultsToSave.size() + " results from: " + actualMeetName);
-        return resultsToSave.size();
+        int savedCount = resultsToSave.size();
+        int accounted = savedCount + alreadyInDb + audit.skippedNoTime() + audit.skippedNoLink();
+        int discrepancy = audit.totalDataRows() - accounted;
+        boolean isBalanced = (discrepancy == 0);
+
+        if (!isBalanced) {
+            anomalies.add(String.format(
+                "Accounting mismatch: totalDataRows=%d, saved=%d, alreadyInDb=%d, skippedNoTime=%d, skippedNoLink=%d (discrepancy=%d)",
+                audit.totalDataRows(), savedCount, alreadyInDb, audit.skippedNoTime(), audit.skippedNoLink(), discrepancy
+            ));
+        }
+
+        IngestionReport report = new IngestionReport(
+            actualMeetName,
+            meetUrl,
+            actualDate,
+            audit.totalDataRows(),
+            savedCount,
+            alreadyInDb,
+            audit.skippedNoTime(),
+            audit.skippedNoLink(),
+            discrepancy,
+            isBalanced,
+            anomalies
+        );
+
+        recordReport(report);
+        System.out.print(report.toFormattedBanner());
+
+        return report;
     }
 
     /**
