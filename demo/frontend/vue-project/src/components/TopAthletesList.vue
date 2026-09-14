@@ -1,13 +1,14 @@
 <script setup>
 import { ref } from 'vue';
 import axios from 'axios';
+import { useLoadingTimer } from '../composables/useLoadingTimer';
 
 const athletes = ref([]);
-const isLoading = ref(false);
+const { isLoading, elapsedSeconds, start, stop } = useLoadingTimer();
 const errorMsg = ref('');
 
 const fetchTopAthletes = async () => {
-  isLoading.value = true;
+  start();
   errorMsg.value = '';
   try {
     const response = await axios.get('http://localhost:8080/api/athletes/top');
@@ -16,7 +17,7 @@ const fetchTopAthletes = async () => {
     console.error("Error getting top athletes:", error);
     errorMsg.value = 'Failed to load top athletes.';
   } finally {
-    isLoading.value = false;
+    stop();
   }
 };
 </script>
@@ -26,10 +27,11 @@ const fetchTopAthletes = async () => {
     <header>
       <h2>Top Athletes</h2>
       <button @click="fetchTopAthletes" :disabled="isLoading">
-        {{ isLoading ? 'Loading...' : 'Load Top Athletes' }}
+        {{ isLoading ? `Loading (${elapsedSeconds}s)...` : 'Load Top Athletes' }}
       </button>
     </header>
 
+    <div v-if="isLoading" class="status-loading">Loading top athletes (for {{ elapsedSeconds }}s)...</div>
     <div v-if="errorMsg" class="error">{{ errorMsg }}</div>
     
     <table v-if="athletes.length" class="athlete-table">
@@ -63,6 +65,11 @@ header {
   display: flex;
   align-items: center;
   gap: 1rem;
+  margin-bottom: 1rem;
+}
+.status-loading {
+  color: #666;
+  font-style: italic;
   margin-bottom: 1rem;
 }
 .athlete-table {

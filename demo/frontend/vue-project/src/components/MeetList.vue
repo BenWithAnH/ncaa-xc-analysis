@@ -1,16 +1,20 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import axios from 'axios';
+import { useLoadingTimer } from '../composables/useLoadingTimer';
 
 const meets = ref([]);
-const isLoading = ref(false);
+const fetchTimer = useLoadingTimer();
+const scrapeTimer = useLoadingTimer();
+const isLoading = computed(() => fetchTimer.isLoading.value || scrapeTimer.isLoading.value);
+
 const errorMsg = ref('');
 const scrapeMsg = ref('');
 const emit = defineEmits(['view-meet']);
 const startYear = ref(2026); // Default year
 
 const fetchMeets = async () => {
-  isLoading.value = true;
+  fetchTimer.start();
   errorMsg.value = '';
   scrapeMsg.value = '';
   try {
@@ -20,12 +24,12 @@ const fetchMeets = async () => {
     console.error("Error getting meet list:", error);
     errorMsg.value = 'Failed to load meets.';
   } finally {
-    isLoading.value = false;
+    fetchTimer.stop();
   }
 };
 
 const bulkScrape = async () => {
-  isLoading.value = true;
+  scrapeTimer.start();
   errorMsg.value = '';
   scrapeMsg.value = '';
   try {
@@ -35,7 +39,7 @@ const bulkScrape = async () => {
     console.error("Error bulk scraping:", error);
     errorMsg.value = 'Failed to bulk scrape meets.';
   } finally {
-    isLoading.value = false;
+    scrapeTimer.stop();
   }
 };
 </script>
@@ -46,17 +50,19 @@ const bulkScrape = async () => {
       <h2>XC Meets</h2>
       <div class="actions">
         <button @click="fetchMeets" :disabled="isLoading">
-          {{ isLoading ? 'Loading...' : 'Load Meet List' }}
+          {{ fetchTimer.isLoading.value ? `Loading (${fetchTimer.elapsedSeconds.value}s)...` : 'Load Meet List' }}
         </button>
         <div class="scrape-actions">
           <input type="number" v-model="startYear" class="year-input" placeholder="Year (e.g. 2023)" />
           <button @click="bulkScrape" :disabled="isLoading">
-            {{ isLoading ? 'Scraping...' : 'Bulk Scrape' }}
+            {{ scrapeTimer.isLoading.value ? `Scraping (${scrapeTimer.elapsedSeconds.value}s)...` : 'Bulk Scrape' }}
           </button>
         </div>
       </div>
     </header>
 
+    <div v-if="fetchTimer.isLoading.value" class="status-loading">Loading meets (for {{ fetchTimer.elapsedSeconds.value }}s)...</div>
+    <div v-if="scrapeTimer.isLoading.value" class="status-loading">Bulk scraping meets since {{ startYear }} (for {{ scrapeTimer.elapsedSeconds.value }}s)...</div>
     <div v-if="errorMsg" class="error">{{ errorMsg }}</div>
     <div v-if="scrapeMsg" class="success">{{ scrapeMsg }}</div>
     
@@ -110,6 +116,11 @@ header {
 .year-input {
   width: 80px;
   padding: 0.2rem;
+}
+.status-loading {
+  color: #666;
+  font-style: italic;
+  margin-bottom: 1rem;
 }
 .meet-table {
   width: 100%;

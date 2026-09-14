@@ -1,9 +1,10 @@
 <script setup>
 import { ref, watch } from 'vue';
 import axios from 'axios';
+import { useLoadingTimer } from '../composables/useLoadingTimer';
 
 const raceData = ref(null);
-const isLoading = ref(false);
+const { isLoading, elapsedSeconds, start, stop } = useLoadingTimer();
 
 const props = defineProps({
   targetMeetUrl: {
@@ -15,7 +16,7 @@ const props = defineProps({
 const scrapeRace = async () => {
   if(!props.targetMeetUrl) return;
 
-  isLoading.value = true;
+  start();
   raceData.value = null;
   try {
     const payload = {
@@ -28,7 +29,7 @@ const scrapeRace = async () => {
   } catch (error) {
     console.error("Error getting race:", error);
   } finally {
-    isLoading.value = false;
+    stop();
   }
 };
 
@@ -42,7 +43,7 @@ watch(() => props.targetMeetUrl, () => {
 
 <template>
   <div>
-    <div v-if="isLoading" class="text-muted">Loading Race Data...</div>
+    <div v-if="isLoading" class="text-muted status-loading">Loading race data (for {{ elapsedSeconds }}s)...</div>
     
     <section v-if="raceData" class="results-card" aria-labelledby="meet-analysis-title">
       <header>
@@ -123,5 +124,12 @@ a {
 }
 a:hover {
   text-decoration: underline;
+}
+.text-muted {
+  color: #666;
+}
+.status-loading {
+  font-style: italic;
+  margin-bottom: 1rem;
 }
 </style>
