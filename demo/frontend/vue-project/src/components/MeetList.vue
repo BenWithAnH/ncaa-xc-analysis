@@ -7,7 +7,7 @@ const isLoading = ref(false);
 const errorMsg = ref('');
 const scrapeMsg = ref('');
 const emit = defineEmits(['view-meet']);
-const startYear = ref(2023); // Default year
+const startYear = ref(2026); // Default year
 
 const fetchMeets = async () => {
   isLoading.value = true;

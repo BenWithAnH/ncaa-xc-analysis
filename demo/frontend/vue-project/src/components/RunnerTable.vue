@@ -26,7 +26,7 @@ const scrapeRace = async () => {
     
     raceData.value = response.data;
   } catch (error) {
-    console.error("Error scraping race:", error);
+    console.error("Error getting race:", error);
   } finally {
     isLoading.value = false;
   }

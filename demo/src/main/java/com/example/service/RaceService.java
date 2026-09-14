@@ -7,7 +7,6 @@ import java.util.stream.Collectors;
 
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +21,12 @@ import com.example.dto.RaceResultResponse;
 import com.example.GetCAF;
 import com.example.Priors;
 import com.example.scraper.ScrapePriors;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.time.Instant;
 
 import com.example.entity.RaceResult;
 import com.example.repository.AthleteRepository;
@@ -43,11 +48,36 @@ public class RaceService {
         this.raceResultRepository = raceResultRepository;
     }
 
-    private void recordReport(IngestionReport report) {
+    void recordReport(IngestionReport report) {
         if (recentReports.size() >= 100) {
             recentReports.remove(0);
         }
         recentReports.add(report);
+        logReport(report);
+        appendReportToFile(report);
+    }
+
+    private void logReport(IngestionReport report) {
+        System.out.println(report.toCompactLine());
+    }
+
+    private synchronized void appendReportToFile(IngestionReport report) {
+        try {
+            Path logPath = Paths.get("reconciliation_reports.log");
+            Files.writeString(logPath,
+                    report.toCompactLine() + System.lineSeparator(),
+                    StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+
+            Path csvPath = Paths.get("reconciliation_reports.csv");
+            if (!Files.exists(csvPath) || Files.size(csvPath) == 0) {
+                Files.writeString(csvPath, IngestionReport.csvHeader() + System.lineSeparator(),
+                        StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            }
+            Files.writeString(csvPath, report.toCsvRow() + System.lineSeparator(),
+                    StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            System.err.println("[MEET-LOG] Failed to write report file: " + e.getMessage());
+        }
     }
 
     public List<IngestionReport> getRecentIngestionReports() {
@@ -80,10 +110,23 @@ public class RaceService {
                     .maxBodySize(0)
                     .get();
         } catch (IOException e) {
-            System.err.println("[RaceService] Error fetching meet page: " + meetUrl + " - " + e.getMessage());
+            String err = "Error fetching meet page: " + meetUrl + " - " + e.getMessage();
+            IngestionReport failedReport = new IngestionReport(
+                meetName != null && !meetName.isEmpty() ? meetName : extractMeetName(meetUrl),
+                meetUrl, meetDate != null && !meetDate.isEmpty() ? meetDate : "TBD",
+                0, 0, 0, 0, 0, 0, false, List.of(err)
+            );
+            recordReport(failedReport);
             return new RaceResultResponse(meetUrl, 8000.0, 1.0, new ArrayList<>());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            String err = "Interrupted while scraping meet: " + meetUrl;
+            IngestionReport failedReport = new IngestionReport(
+                meetName != null && !meetName.isEmpty() ? meetName : extractMeetName(meetUrl),
+                meetUrl, meetDate != null && !meetDate.isEmpty() ? meetDate : "TBD",
+                0, 0, 0, 0, 0, 0, false, List.of(err)
+            );
+            recordReport(failedReport);
             return new RaceResultResponse(meetUrl, 8000.0, 1.0, new ArrayList<>());
         }
 
@@ -100,7 +143,6 @@ public class RaceService {
                 List.of("No men's individual results table found at: " + meetUrl)
             );
             recordReport(emptyReport);
-            System.out.print(emptyReport.toFormattedBanner());
             return new RaceResultResponse(meetUrl, distance, 1.0, new ArrayList<>());
         }
 
@@ -207,7 +249,6 @@ public class RaceService {
             audit.skippedNoTime(), audit.skippedNoLink(), discrepancy, isBalanced, anomalies
         );
         recordReport(report);
-        System.out.print(report.toFormattedBanner());
 
         return new RaceResultResponse(meetUrl, distance, cafCalculator.lastCaf, dtoList);
     }
@@ -240,13 +281,18 @@ public class RaceService {
         List<MeetScraper.MeetInfo> meets = meetScraper.scrapeXCMeetsSinceYear(startYear, maxPagesLimit);
         int totalSaved = 0;
 
+        System.out.println("[MEET-LOG] Bulk scrape started for " + meets.size() + " meet(s). Logging every meet to terminal and reconciliation_reports.csv");
+
         for (int i = 0; i < meets.size(); i++) {
             MeetScraper.MeetInfo meet = meets.get(i);
-            System.out.println("[BulkScrape] Processing meet " + (i + 1) + "/" + meets.size() + ": " + meet.name() + " (" + meet.date() + ")");
             try {
                 totalSaved += bulkScrapeAndSaveRaw(meet.url(), meet.name(), meet.date());
             } catch (Exception e) {
-                System.err.println("Error processing meet " + meet.name() + ": " + e.getMessage());
+                String err = "Error processing meet " + meet.name() + ": " + e.getMessage();
+                IngestionReport failedReport = new IngestionReport(
+                        meet.name(), meet.url(), meet.date(), 0, 0, 0, 0, 0, 0, false, List.of(err)
+                );
+                recordReport(failedReport);
             }
         }
         
@@ -290,17 +336,21 @@ public class RaceService {
                     .maxBodySize(0)
                     .get();
         } catch (IOException e) {
-            String err = "[BulkScrape] Error fetching meet page: " + meetUrl + " - " + e.getMessage();
-            System.err.println(err);
+            String err = "Error fetching meet page: " + meetUrl + " - " + e.getMessage();
             IngestionReport failedReport = new IngestionReport(
-                meetName, meetUrl, meetDate, 0, 0, 0, 0, 0, 0, false, List.of(err)
+                meetName != null && !meetName.isEmpty() ? meetName : extractMeetName(meetUrl),
+                meetUrl, meetDate != null && !meetDate.isEmpty() ? meetDate : "TBD",
+                0, 0, 0, 0, 0, 0, false, List.of(err)
             );
             recordReport(failedReport);
             return failedReport;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            String err = "Interrupted while fetching " + meetUrl;
             IngestionReport failedReport = new IngestionReport(
-                meetName, meetUrl, meetDate, 0, 0, 0, 0, 0, 0, false, List.of("Interrupted while fetching " + meetUrl)
+                meetName != null && !meetName.isEmpty() ? meetName : extractMeetName(meetUrl),
+                meetUrl, meetDate != null && !meetDate.isEmpty() ? meetDate : "TBD",
+                0, 0, 0, 0, 0, 0, false, List.of(err)
             );
             recordReport(failedReport);
             return failedReport;
@@ -314,13 +364,11 @@ public class RaceService {
         String actualDate = (meetDate == null || meetDate.trim().isEmpty()) ? "TBD" : meetDate;
 
         if (athletes.isEmpty() && audit.totalDataRows() == 0) {
-            System.out.println("[BulkScrape] No athletes found at: " + meetUrl);
             IngestionReport emptyReport = new IngestionReport(
                 actualMeetName, meetUrl, actualDate, 0, 0, 0, 0, 0, 0, true,
                 List.of("No men's individual results table found at: " + meetUrl)
             );
             recordReport(emptyReport);
-            System.out.print(emptyReport.toFormattedBanner());
             return emptyReport;
         }
 
@@ -384,7 +432,6 @@ public class RaceService {
         );
 
         recordReport(report);
-        System.out.print(report.toFormattedBanner());
 
         return report;
     }

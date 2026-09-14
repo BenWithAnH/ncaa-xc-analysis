@@ -97,9 +97,11 @@ class RaceScraperTest {
 
         assertTrue(report.isBalanced());
         assertEquals(0, report.discrepancy());
+        assertEquals("SUCCESS", report.status());
         String banner = report.toFormattedBanner();
-        assertTrue(banner.contains("[ETL-RECONCILE]"));
-        assertTrue(banner.contains("[OK] 100% of rows accounted for"));
+        assertTrue(banner.contains("[MEET-LOG-DETAIL]"));
+        assertTrue(banner.contains("100% of rows accounted for"));
+        assertTrue(report.toCompactLine().contains("[MEET-LOG] [SUCCESS]"));
     }
 
     @Test
@@ -128,8 +130,10 @@ class RaceScraperTest {
 
         assertFalse(report.isBalanced());
         assertEquals(2, report.discrepancy());
+        assertEquals("WARNING", report.status());
         String banner = report.toFormattedBanner();
-        assertTrue(banner.contains("[MISMATCH DETECTED] 2 row(s) unaccounted for!"));
-        assertTrue(banner.contains("Anomalies / Warnings"));
+        assertTrue(banner.contains("2 row(s) unaccounted for!"));
+        assertTrue(banner.contains("Errors / Warnings"));
+        assertTrue(report.toCompactLine().contains("[MEET-LOG] [WARNING]"));
     }
 }

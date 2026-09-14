@@ -5,10 +5,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.times;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+
+import com.example.dto.IngestionReport;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,8 +36,10 @@ class RaceServiceTest {
     private RaceService raceService;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         MockitoAnnotations.openMocks(this);
+        java.nio.file.Files.deleteIfExists(java.nio.file.Paths.get("reconciliation_reports.csv"));
+        java.nio.file.Files.deleteIfExists(java.nio.file.Paths.get("reconciliation_reports.log"));
     }
 
     @Test
@@ -75,5 +81,45 @@ class RaceServiceTest {
         assertEquals("Cached", result.getGender());
         assertEquals(160.5, result.getPriorRating());
         verify(athleteRepository, times(1)).findById(athleteLink);
+    }
+
+    @Test
+    void testRecordReportWritesToMemoryAndFile() throws Exception {
+        IngestionReport report = new IngestionReport(
+                "Test XC Invite", "https://tfrrs.org/results/xc/111", "Nov 1, 2023",
+                100, 95, 0, 3, 2, 0, true, List.of()
+        );
+        raceService.recordReport(report);
+
+        List<IngestionReport> recent = raceService.getRecentIngestionReports();
+        assertFalse(recent.isEmpty());
+        assertEquals("Test XC Invite", recent.get(recent.size() - 1).meetName());
+        assertEquals("SUCCESS", recent.get(recent.size() - 1).status());
+
+        assertTrue(java.nio.file.Files.exists(java.nio.file.Paths.get("reconciliation_reports.csv")));
+        assertTrue(java.nio.file.Files.exists(java.nio.file.Paths.get("reconciliation_reports.log")));
+
+        String csvContent = java.nio.file.Files.readString(java.nio.file.Paths.get("reconciliation_reports.csv"));
+        assertTrue(csvContent.contains("status,rows_touched,athletes_extracted,athletes_saved"));
+        assertTrue(csvContent.contains("\"SUCCESS\""));
+        assertTrue(csvContent.contains("\"Test XC Invite\""));
+    }
+
+    @Test
+    void testRecordErrorReport() throws Exception {
+        IngestionReport errorReport = new IngestionReport(
+                "Broken Meet", "https://tfrrs.org/results/xc/999", "Oct 10, 2023",
+                0, 0, 0, 0, 0, 0, false, List.of("HTTP 404 Not Found")
+        );
+        raceService.recordReport(errorReport);
+
+        assertEquals("ERROR", errorReport.status());
+        assertTrue(errorReport.toCompactLine().contains("[MEET-LOG] [ERROR]"));
+        assertTrue(errorReport.toCompactLine().contains("HTTP 404 Not Found"));
+
+        String csvContent = java.nio.file.Files.readString(java.nio.file.Paths.get("reconciliation_reports.csv"));
+        assertTrue(csvContent.contains("\"ERROR\""));
+        assertTrue(csvContent.contains("\"Broken Meet\""));
+        assertTrue(csvContent.contains("HTTP 404 Not Found"));
     }
 }
