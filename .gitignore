@@ -47,3 +47,9 @@ dist-ssr/
 .vscode/
 .eclipse/
 AGENTS.md
+
+# Reconciliation reports and logs
+reconciliation_reports.*
+**/reconciliation_reports.*
+*error*.log
+*error*.txt
