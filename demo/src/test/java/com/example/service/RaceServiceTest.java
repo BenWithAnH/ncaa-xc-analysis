@@ -21,6 +21,7 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import com.example.entity.Athlete;
+import com.example.entity.RaceResult;
 import com.example.repository.AthleteRepository;
 import com.example.repository.RaceResultRepository;
 
@@ -121,5 +122,41 @@ class RaceServiceTest {
         assertTrue(csvContent.contains("\"ERROR\""));
         assertTrue(csvContent.contains("\"Broken Meet\""));
         assertTrue(csvContent.contains("HTTP 404 Not Found"));
+    }
+
+    @Test
+    void testSearchAthletes() {
+        Athlete a = new Athlete();
+        a.setName("Nico Young");
+        when(athleteRepository.findTop4ByNameContainingIgnoreCase("Nico")).thenReturn(List.of(a));
+
+        List<Athlete> result = raceService.searchAthletes("Nico");
+
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        assertEquals("Nico Young", result.get(0).getName());
+        verify(athleteRepository, times(1)).findTop4ByNameContainingIgnoreCase("Nico");
+
+        // Edge case: null or blank query returns empty list
+        assertTrue(raceService.searchAthletes(null).isEmpty());
+        assertTrue(raceService.searchAthletes("   ").isEmpty());
+    }
+
+    @Test
+    void testGetAthleteResults() {
+        String link = "https://tfrrs.org/athletes/123";
+        RaceResult rr = new RaceResult(link, "Nico Young", "NCAA Championship", "Nov 18, 2023", "28:50.0", 175.0);
+        when(raceResultRepository.findByAthleteLink(link)).thenReturn(List.of(rr));
+
+        List<RaceResult> result = raceService.getAthleteResults(link);
+
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        assertEquals("NCAA Championship", result.get(0).getMeetName());
+        verify(raceResultRepository, times(1)).findByAthleteLink(link);
+
+        // Edge case: null or blank link returns empty list
+        assertTrue(raceService.getAthleteResults(null).isEmpty());
+        assertTrue(raceService.getAthleteResults("   ").isEmpty());
     }
 }

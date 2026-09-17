@@ -36,8 +36,8 @@ const bulkScrape = async () => {
     const response = await axios.post(`http://localhost:8080/api/meets/bulk-scrape-since-year?startYear=${startYear.value}&maxPages=200`);
     scrapeMsg.value = response.data;
   } catch (error) {
-    console.error("Error bulk scraping:", error);
-    errorMsg.value = 'Failed to bulk scrape meets.';
+    console.error("Error bulk loading:", error);
+    errorMsg.value = 'Failed to bulk load meets.';
   } finally {
     scrapeTimer.stop();
   }
@@ -62,7 +62,7 @@ const bulkScrape = async () => {
     </header>
 
     <div v-if="fetchTimer.isLoading.value" class="status-loading">Loading meets (for {{ fetchTimer.elapsedSeconds.value }}s)...</div>
-    <div v-if="scrapeTimer.isLoading.value" class="status-loading">Bulk scraping meets since {{ startYear }} (for {{ scrapeTimer.elapsedSeconds.value }}s)...</div>
+    <div v-if="scrapeTimer.isLoading.value" class="status-loading">Bulk loading meets since {{ startYear }} (for {{ scrapeTimer.elapsedSeconds.value }}s)...</div>
     <div v-if="errorMsg" class="error">{{ errorMsg }}</div>
     <div v-if="scrapeMsg" class="success">{{ scrapeMsg }}</div>
     
@@ -79,7 +79,7 @@ const bulkScrape = async () => {
         <td>{{ meet.name }}</td>
         <td>{{ meet.date }}</td>
         <td>
-            <button @click="emit('view-meet', meet.url)">View</button>
+            <button @click="emit('view-meet', meet)">View</button>
         </td>
         </tr>
       </tbody>

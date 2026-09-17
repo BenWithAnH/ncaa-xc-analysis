@@ -17,6 +17,7 @@ import com.example.dto.MeetResponse;
 import com.example.dto.RaceRequest;
 import com.example.dto.RaceResultResponse;
 import com.example.entity.Athlete;
+import com.example.entity.RaceResult;
 import com.example.service.RaceService;
 
 @RestController
@@ -27,6 +28,26 @@ public class Controller {
 
     public Controller(RaceService raceService) {
         this.raceService = raceService;
+    }
+
+    /**
+     * Searches athletes by name (up to 4 results for autocomplete).
+     *
+     * GET /api/athletes/search?query=...
+     */
+    @GetMapping("/athletes/search")
+    public List<Athlete> searchAthletes(@RequestParam String query) {
+        return raceService.searchAthletes(query);
+    }
+
+    /**
+     * Retrieves all database race records associated with an athlete.
+     *
+     * GET /api/athletes/results?link=...
+     */
+    @GetMapping("/athletes/results")
+    public List<RaceResult> getAthleteResults(@RequestParam String link) {
+        return raceService.getAthleteResults(link);
     }
 
     /**

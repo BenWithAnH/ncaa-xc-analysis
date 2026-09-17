@@ -23,6 +23,7 @@ import com.example.dto.MeetResponse;
 import com.example.dto.RaceRequest;
 import com.example.dto.RaceResultResponse;
 import com.example.entity.Athlete;
+import com.example.entity.RaceResult;
 import com.example.service.RaceService;
 
 class ControllerTest {
@@ -132,5 +133,34 @@ class ControllerTest {
         assertNotNull(result);
         assertEquals("Male", result.getGender());
         verify(raceService, times(1)).getAthleteProfile(link);
+    }
+
+    @Test
+    void testSearchAthletes() {
+        Athlete a = new Athlete();
+        a.setName("John Doe");
+        when(raceService.searchAthletes("John")).thenReturn(List.of(a));
+
+        List<Athlete> result = controller.searchAthletes("John");
+
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        assertEquals("John Doe", result.get(0).getName());
+        verify(raceService, times(1)).searchAthletes("John");
+    }
+
+    @Test
+    void testGetAthleteResults() {
+        RaceResult rr = new RaceResult();
+        rr.setAthleteName("John Doe");
+        rr.setRaceTime("15:00.0");
+        when(raceService.getAthleteResults("http://example.com/john")).thenReturn(List.of(rr));
+
+        List<RaceResult> result = controller.getAthleteResults("http://example.com/john");
+
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        assertEquals("John Doe", result.get(0).getAthleteName());
+        verify(raceService, times(1)).getAthleteResults("http://example.com/john");
     }
 }

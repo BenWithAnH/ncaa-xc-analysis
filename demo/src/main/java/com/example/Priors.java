@@ -27,7 +27,12 @@ public class Priors {
             return 0.0;
         }
         String clean = timeStr.trim().replace(",", "");
-        if (clean.equalsIgnoreCase("dnf") || clean.equalsIgnoreCase("dns") || clean.equalsIgnoreCase("nt")) {
+        if (clean.equalsIgnoreCase("dnf") || clean.equalsIgnoreCase("dns") || clean.equalsIgnoreCase("nt") || clean.equalsIgnoreCase("dq") || clean.equalsIgnoreCase("fs") || clean.equalsIgnoreCase("scr")) {
+            return 0.0;
+        }
+        // Remove trailing extraneous characters like 'h', 'm', '(PR)', etc.
+        clean = clean.replaceAll("[^0-9:.]", "");
+        if (clean.isEmpty()) {
             return 0.0;
         }
         try {
@@ -47,11 +52,25 @@ public class Priors {
                 return Double.parseDouble(clean);
             }
         } catch (NumberFormatException e) {
-            //log?
+            // log?
         }
         return 0.0;
     }
 
+    public static Reader getCoefficientsReader() {
+        File f = findCoefficientsFile();
+        if (f != null && f.exists()) {
+            try {
+                return new FileReader(f);
+            } catch (Exception ignored) {
+            }
+        }
+        var is = Priors.class.getResourceAsStream("/coefficients-2025.json");
+        if (is != null) {
+            return new java.io.InputStreamReader(is);
+        }
+        return null;
+    }
 
     private static File findCoefficientsFile() {
         String[] paths = {
@@ -112,13 +131,11 @@ public class Priors {
 
 
     public void findBest(ArrayList<String> prs, String gender) {
-        File coeffFile = findCoefficientsFile();
-        if (coeffFile == null) {
-            System.err.println("coef file not found.");
-            return;
-        }
-
-        try (Reader reader = new FileReader(coeffFile)) {
+        try (Reader reader = getCoefficientsReader()) {
+            if (reader == null) {
+                System.err.println("coef file not found.");
+                return;
+            }
             Gson gson = new Gson();
             Type type = new TypeToken<Map<String, Map<String, List<Double>>>>() {
             }.getType();
@@ -159,13 +176,12 @@ public class Priors {
         if (prs == null || prs.isEmpty() || gender == null) {
             return 0.0;
         }
-        File coeffFile = findCoefficientsFile();
-        if (coeffFile == null) {
-            System.err.println("coef file not found.");
-            return 0.0;
-        }
 
-        try (Reader reader = new FileReader(coeffFile)) {
+        try (Reader reader = getCoefficientsReader()) {
+            if (reader == null) {
+                System.err.println("coef file not found.");
+                return 0.0;
+            }
             Gson gson = new Gson();
             Type type = new TypeToken<Map<String, Map<String, List<Double>>>>() {
             }.getType();

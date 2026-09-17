@@ -4,46 +4,55 @@ import axios from 'axios';
 import { useLoadingTimer } from '../composables/useLoadingTimer';
 
 const raceData = ref(null);
+const errorMsg = ref('');
 const { isLoading, elapsedSeconds, start, stop } = useLoadingTimer();
 
+const emit = defineEmits(['race-rated']);
+
 const props = defineProps({
-  targetMeetUrl: {
-    type: String,
+  targetMeet: {
+    type: [Object, String],
     required: true
   }
 });
 
 const scrapeRace = async () => {
-  if(!props.targetMeetUrl) return;
+  const meetUrl = typeof props.targetMeet === 'object' ? props.targetMeet?.url : props.targetMeet;
+  if (!meetUrl) return;
 
   start();
+  errorMsg.value = '';
   raceData.value = null;
   try {
     const payload = {
-      meetUrl: props.targetMeetUrl
+      meetUrl: meetUrl,
+      meetName: typeof props.targetMeet === 'object' ? (props.targetMeet?.name || '') : '',
+      meetDate: typeof props.targetMeet === 'object' ? (props.targetMeet?.date || '') : ''
     };
     
     const response = await axios.post('http://localhost:8080/api/race/rate', payload);
-    
     raceData.value = response.data;
+    emit('race-rated', response.data);
   } catch (error) {
     console.error("Error getting race:", error);
+    errorMsg.value = error.response?.data?.message || 'Failed to load meet data.';
   } finally {
     stop();
   }
 };
 
-watch(() => props.targetMeetUrl, () => {
-  if (props.targetMeetUrl) {
+watch(() => props.targetMeet, () => {
+  if (props.targetMeet) {
     scrapeRace();
   }
-}, { immediate: true });
+}, { immediate: true, deep: true });
 
 </script>
 
 <template>
   <div>
     <div v-if="isLoading" class="text-muted status-loading">Loading race data (for {{ elapsedSeconds }}s)...</div>
+    <div v-if="errorMsg" class="error">{{ errorMsg }}</div>
     
     <section v-if="raceData" class="results-card" aria-labelledby="meet-analysis-title">
       <header>
@@ -130,6 +139,10 @@ a:hover {
 }
 .status-loading {
   font-style: italic;
+  margin-bottom: 1rem;
+}
+.error {
+  color: red;
   margin-bottom: 1rem;
 }
 </style>

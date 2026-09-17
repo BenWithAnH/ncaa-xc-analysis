@@ -47,7 +47,7 @@ public class GetCAF {
                 .collect(Collectors.toList());
 
         java.util.Map<String, com.example.entity.Athlete> cachedMap = new java.util.HashMap<>();
-        if (!validLinks.isEmpty()) {
+        if (!validLinks.isEmpty() && athleteRepository != null) {
             athleteRepository.findAllById(validLinks).forEach(a -> cachedMap.put(a.getLink(), a));
         }
 
@@ -62,7 +62,7 @@ public class GetCAF {
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
-        if (!newlyScrapedAthletes.isEmpty()) {
+        if (!newlyScrapedAthletes.isEmpty() && athleteRepository != null) {
             athleteRepository.saveAll(newlyScrapedAthletes);
         }
 

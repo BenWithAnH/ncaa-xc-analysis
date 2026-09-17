@@ -512,4 +512,24 @@ public class RaceService {
     public List<com.example.entity.Athlete> getTopAthletes() {
         return athleteRepository.findTop100ByBestTimeIsNotNullOrderByRatingDesc();
     }
+
+    /**
+     * Searches for up to 4 athletes matching the name query.
+     */
+    public List<com.example.entity.Athlete> searchAthletes(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return List.of();
+        }
+        return athleteRepository.findTop4ByNameContainingIgnoreCase(query.trim());
+    }
+
+    /**
+     * Retrieves all stored race results for a specific athlete.
+     */
+    public List<RaceResult> getAthleteResults(String athleteLink) {
+        if (athleteLink == null || athleteLink.trim().isEmpty()) {
+            return List.of();
+        }
+        return raceResultRepository.findByAthleteLink(athleteLink.trim());
+    }
 }

@@ -9,4 +9,5 @@ import java.util.List;
 @Repository
 public interface AthleteRepository extends JpaRepository<Athlete, String> {
     List<Athlete> findTop100ByBestTimeIsNotNullOrderByRatingDesc();
+    List<Athlete> findTop4ByNameContainingIgnoreCase(String name);
 }

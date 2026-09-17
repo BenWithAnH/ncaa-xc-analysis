@@ -1,2 +1,2 @@
 timestamp,meet_name,meet_url,meet_date,status,rows_touched,athletes_extracted,athletes_saved,athletes_already_in_db,skipped_no_time,skipped_no_link,discrepancy,is_balanced,errors_and_anomalies
-"2026-09-16T00:57:03.362295800Z","Broken Meet","https://tfrrs.org/results/xc/999","Oct 10, 2023","ERROR",0,0,0,0,0,0,0,false,"HTTP 404 Not Found"
+"2026-09-15T23:57:30.224522400Z","Purchase College XC Invitational","https://tfrrs.org/results/xc/27375/Purchase_College_XC_Invitational","09/12/26","SUCCESS",110,109,109,0,0,1,0,true,""

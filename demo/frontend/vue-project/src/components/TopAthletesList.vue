@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import axios from 'axios';
 import { useLoadingTimer } from '../composables/useLoadingTimer';
 
@@ -20,6 +20,14 @@ const fetchTopAthletes = async () => {
     stop();
   }
 };
+
+onMounted(() => {
+  fetchTopAthletes();
+});
+
+defineExpose({
+  fetchTopAthletes
+});
 </script>
 
 <template>
