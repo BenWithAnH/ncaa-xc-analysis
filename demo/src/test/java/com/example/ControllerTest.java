@@ -19,6 +19,7 @@ import org.mockito.MockitoAnnotations;
 
 import com.example.dto.AthleteProfileResponse;
 import com.example.dto.AthleteRatingResponse;
+import com.example.dto.BulkScrapeStatusResponse;
 import com.example.dto.MeetResponse;
 import com.example.dto.RaceRequest;
 import com.example.dto.RaceResultResponse;
@@ -111,6 +112,22 @@ class ControllerTest {
     }
 
     @Test
+    void testListMeetsPage() {
+        MeetResponse meet = new MeetResponse();
+        meet.setName("Page 2 Meet");
+        List<MeetResponse> mockMeets = Arrays.asList(meet);
+
+        when(raceService.listXCMeetsPage(2)).thenReturn(mockMeets);
+
+        List<MeetResponse> result = controller.listMeets(2, null);
+
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        assertEquals("Page 2 Meet", result.get(0).getName());
+        verify(raceService, times(1)).listXCMeetsPage(2);
+    }
+
+    @Test
     void testBulkScrape() {
         when(raceService.bulkScrapeMeets(2)).thenReturn(150);
         
@@ -162,5 +179,31 @@ class ControllerTest {
         assertEquals(1, result.size());
         assertEquals("John Doe", result.get(0).getAthleteName());
         verify(raceService, times(1)).getAthleteResults("http://example.com/john");
+    }
+
+    @Test
+    void testBulkScrapeSinceYear() {
+        when(raceService.startBulkScrapeSinceYearAsync(2026, 50)).thenReturn(true);
+
+        String result = controller.bulkScrapeSinceYear(2026, 50);
+
+        assertEquals("Bulk scrape started for meets since year 2026.", result);
+        verify(raceService, times(1)).startBulkScrapeSinceYearAsync(2026, 50);
+    }
+
+    @Test
+    void testGetBulkScrapeStatus() {
+        BulkScrapeStatusResponse mockStatus = new BulkScrapeStatusResponse(
+                true, "SCRAPING", 2026, 14, 420, 10, 410, 2500.0, 1025, 25, "Test Meet", 150, "In progress", null
+        );
+        when(raceService.getBulkScrapeStatus()).thenReturn(mockStatus);
+
+        BulkScrapeStatusResponse result = controller.getBulkScrapeStatus();
+
+        assertNotNull(result);
+        assertEquals(true, result.running());
+        assertEquals(420, result.totalMeets());
+        assertEquals(1025, result.etaSeconds());
+        verify(raceService, times(1)).getBulkScrapeStatus();
     }
 }

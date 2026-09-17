@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.dto.AthleteProfileResponse;
 import com.example.dto.AthleteRatingResponse;
+import com.example.dto.BulkScrapeStatusResponse;
 import com.example.dto.IngestionReport;
 import com.example.dto.MeetResponse;
 import com.example.dto.RaceRequest;
@@ -88,11 +89,22 @@ public class Controller {
     /**
      * Lists available XC meets from TFRRS.
      *
+     * GET /api/meets?page=1
      * GET /api/meets?maxPages=1
      */
     @GetMapping("/meets")
-    public List<MeetResponse> listMeets(@RequestParam(defaultValue = "1") int maxPages) {
-        return raceService.listXCMeets(maxPages);
+    public List<MeetResponse> listMeets(
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer maxPages) {
+        if (page != null) {
+            return raceService.listXCMeetsPage(page);
+        }
+        int pages = (maxPages != null) ? maxPages : 1;
+        return raceService.listXCMeets(pages);
+    }
+
+    public List<MeetResponse> listMeets(int maxPages) {
+        return listMeets(null, maxPages);
     }
     
     /**
@@ -107,14 +119,38 @@ public class Controller {
     }
     
     /**
-     * Bulk scrapes meets from TFRRS going back to a specific year and saves results.
+     * Bulk scrapes meets from TFRRS going back to a specific year and saves results asynchronously.
      *
      * POST /api/meets/bulk-scrape-since-year?startYear=2023&maxPages=50
      */
     @PostMapping("/meets/bulk-scrape-since-year")
     public String bulkScrapeSinceYear(@RequestParam int startYear, @RequestParam(defaultValue = "50") int maxPages) {
-        int totalSaved = raceService.bulkScrapeMeetsSinceYear(startYear, maxPages);
-        return "Bulk scrape completed since year " + startYear + ". Saved " + totalSaved + " athletes.";
+        boolean started = raceService.startBulkScrapeSinceYearAsync(startYear, maxPages);
+        if (!started) {
+            return "A bulk scrape is already in progress.";
+        }
+        return "Bulk scrape started for meets since year " + startYear + ".";
+    }
+
+    /**
+     * Retrieves the current bulk scrape progress, average meet processing time, and ETA.
+     *
+     * GET /api/meets/bulk-scrape/status
+     */
+    @GetMapping("/meets/bulk-scrape/status")
+    public BulkScrapeStatusResponse getBulkScrapeStatus() {
+        return raceService.getBulkScrapeStatus();
+    }
+
+    /**
+     * Cancels an ongoing bulk scrape job.
+     *
+     * POST /api/meets/bulk-scrape/cancel
+     */
+    @PostMapping("/meets/bulk-scrape/cancel")
+    public String cancelBulkScrape() {
+        raceService.cancelBulkScrape();
+        return "Cancellation requested.";
     }
 
     /**

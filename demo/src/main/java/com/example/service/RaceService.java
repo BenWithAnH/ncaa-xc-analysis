@@ -15,6 +15,7 @@ import com.example.scraper.RaceScraper;
 import com.example.scraper.RaceScraper.Athlete;
 import com.example.dto.AthleteProfileResponse;
 import com.example.dto.AthleteRatingResponse;
+import com.example.dto.BulkScrapeStatusResponse;
 import com.example.dto.IngestionReport;
 import com.example.dto.MeetResponse;
 import com.example.dto.RaceResultResponse;
@@ -42,6 +43,7 @@ public class RaceService {
     private final AthleteRepository athleteRepository;
     private final RaceResultRepository raceResultRepository;
     private final List<IngestionReport> recentReports = java.util.Collections.synchronizedList(new ArrayList<>());
+    private final BulkScrapeTracker bulkScrapeTracker = new BulkScrapeTracker();
 
     public RaceService(AthleteRepository athleteRepository, RaceResultRepository raceResultRepository) {
         this.athleteRepository = athleteRepository;
@@ -276,15 +278,101 @@ public class RaceService {
         if (maxPagesLimit < 1) {
             throw new IllegalArgumentException("maxPagesLimit must be at least 1");
         }
+        return executeBulkScrapeSinceYear(startYear, maxPagesLimit, bulkScrapeTracker);
+    }
+
+    public boolean startBulkScrapeSinceYearAsync(int startYear, int maxPagesLimit) {
+        if (!bulkScrapeTracker.getRunning().compareAndSet(false, true)) {
+            return false;
+        }
+        bulkScrapeTracker.reset();
+        bulkScrapeTracker.setRunning(true);
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                executeBulkScrapeSinceYear(startYear, maxPagesLimit, bulkScrapeTracker);
+            } catch (Exception e) {
+                bulkScrapeTracker.setStage("FAILED");
+                bulkScrapeTracker.setError("Bulk scrape error: " + e.getMessage());
+                bulkScrapeTracker.setRunning(false);
+            }
+        });
+        return true;
+    }
+
+    public BulkScrapeStatusResponse getBulkScrapeStatus() {
+        return bulkScrapeTracker.toResponse();
+    }
+
+    public void cancelBulkScrape() {
+        bulkScrapeTracker.requestCancel();
+    }
+
+    public int executeBulkScrapeSinceYear(int startYear, int maxPagesLimit, BulkScrapeTracker tracker) {
+        tracker.setRunning(true);
+        tracker.setStage("INITIAL_COUNT");
+        tracker.setStartYear(startYear);
+        tracker.setStartTimeMs(System.currentTimeMillis());
+        tracker.setError(null);
+        tracker.setMessage("Calculating total meets via fast binary search on page parameter...");
 
         MeetScraper meetScraper = new MeetScraper();
-        List<MeetScraper.MeetInfo> meets = meetScraper.scrapeXCMeetsSinceYear(startYear, maxPagesLimit);
+
+        // 1. Initial Count via Fast Binary Search (probing page 100 first)
+        int lastValidPage = meetScraper.findLastValidPage(startYear, maxPagesLimit);
+        int totalPages = Math.max(1, lastValidPage);
+        int estimatedTotalMeets = totalPages * 30;
+
+        tracker.setTotalPages(totalPages);
+        tracker.setTotalMeets(estimatedTotalMeets);
+        tracker.setStage("SCRAPING");
+        tracker.setMessage("Baseline established: ~" + estimatedTotalMeets + " meets across " + totalPages + " pages.");
+
         int totalSaved = 0;
+        int processedMeets = 0;
+        long totalProcessingTimeMs = 0;
 
-        System.out.println("[MEET-LOG] Bulk scrape started for " + meets.size() + " meet(s). Logging every meet to terminal and reconciliation_reports.csv");
+        List<MeetScraper.MeetInfo> allMeets = new ArrayList<>();
+        for (int page = 1; page <= totalPages; page++) {
+            if (tracker.isCancelRequested()) {
+                tracker.setStage("CANCELLED");
+                tracker.setMessage("Bulk scrape cancelled by user.");
+                tracker.setRunning(false);
+                tracker.setElapsedSeconds((System.currentTimeMillis() - tracker.getStartTimeMs()) / 1000);
+                return totalSaved;
+            }
 
-        for (int i = 0; i < meets.size(); i++) {
-            MeetScraper.MeetInfo meet = meets.get(i);
+            List<MeetScraper.MeetInfo> pageMeets = meetScraper.scrapeXCMeetPage(page);
+            for (MeetScraper.MeetInfo m : pageMeets) {
+                if (startYear <= 0) {
+                    allMeets.add(m);
+                } else {
+                    int yr = MeetScraper.extractYearFromDate(m.date());
+                    if (yr >= startYear || yr <= 0) {
+                        allMeets.add(m);
+                    }
+                }
+            }
+            int currentKnownMeets = allMeets.size() + Math.max(0, totalPages - page) * 30;
+            tracker.setTotalMeets(Math.max(allMeets.size(), currentKnownMeets));
+        }
+
+        tracker.setTotalMeets(allMeets.size());
+
+        System.out.println("[MEET-LOG] Bulk scrape executing for " + allMeets.size() + " meet(s) across " + totalPages + " page(s).");
+
+        for (int i = 0; i < allMeets.size(); i++) {
+            if (tracker.isCancelRequested()) {
+                tracker.setStage("CANCELLED");
+                tracker.setMessage("Bulk scrape cancelled by user. Saved " + totalSaved + " athletes across " + processedMeets + " meets.");
+                tracker.setRunning(false);
+                tracker.setElapsedSeconds((System.currentTimeMillis() - tracker.getStartTimeMs()) / 1000);
+                return totalSaved;
+            }
+
+            MeetScraper.MeetInfo meet = allMeets.get(i);
+            tracker.setCurrentMeetName(meet.name());
+            long meetStart = System.currentTimeMillis();
+
             try {
                 totalSaved += bulkScrapeAndSaveRaw(meet.url(), meet.name(), meet.date());
             } catch (Exception e) {
@@ -294,8 +382,29 @@ public class RaceService {
                 );
                 recordReport(failedReport);
             }
+
+            long meetDuration = System.currentTimeMillis() - meetStart;
+            processedMeets++;
+            totalProcessingTimeMs += meetDuration;
+
+            // 2. Track the Average
+            double avgTimePerMeetMs = (double) totalProcessingTimeMs / processedMeets;
+            tracker.setAvgTimePerMeetMs(avgTimePerMeetMs);
+
+            // 3. Calculate ETA: (remaining un-scraped meets) * (average time per meet)
+            int remainingMeets = Math.max(0, tracker.getTotalMeets() - processedMeets);
+            long etaSeconds = Math.round((remainingMeets * (avgTimePerMeetMs / 1000.0)));
+            tracker.setEtaSeconds(etaSeconds);
+            tracker.setProcessedMeets(processedMeets);
+            tracker.setSavedAthletes(totalSaved);
+            tracker.setElapsedSeconds((System.currentTimeMillis() - tracker.getStartTimeMs()) / 1000);
         }
-        
+
+        tracker.setStage("COMPLETED");
+        tracker.setRunning(false);
+        tracker.setEtaSeconds(0);
+        tracker.setElapsedSeconds((System.currentTimeMillis() - tracker.getStartTimeMs()) / 1000);
+        tracker.setMessage("Bulk scrape completed since year " + startYear + ". Saved " + totalSaved + " athletes across " + processedMeets + " meets.");
         return totalSaved;
     }
 
@@ -475,6 +584,25 @@ public class RaceService {
     }
 
     /**
+     * Lists available XC meets for a specific page from TFRRS.
+     *
+     * @param page page number to scrape (1-indexed, each page ≈ 30 meets)
+     * @return list of meet info
+     */
+    public List<MeetResponse> listXCMeetsPage(int page) {
+        if (page < 1) {
+            throw new IllegalArgumentException("page must be at least 1");
+        }
+
+        MeetScraper meetScraper = new MeetScraper();
+        List<MeetScraper.MeetInfo> meets = meetScraper.scrapeXCMeetPage(page);
+
+        return meets.stream()
+                .map(m -> new MeetResponse(m.url(), m.name(), m.date()))
+                .collect(Collectors.toList());
+    }
+
+    /**
      * Fetches an athlete's profile page and returns their PRs and prior rating.
      *
      * @param athleteLink TFRRS athlete profile URL or path
@@ -531,5 +659,96 @@ public class RaceService {
             return List.of();
         }
         return raceResultRepository.findByAthleteLink(athleteLink.trim());
+    }
+
+    public static class BulkScrapeTracker {
+        private final java.util.concurrent.atomic.AtomicBoolean running = new java.util.concurrent.atomic.AtomicBoolean(false);
+        private final java.util.concurrent.atomic.AtomicBoolean cancelRequested = new java.util.concurrent.atomic.AtomicBoolean(false);
+        private volatile String stage = "IDLE";
+        private volatile int startYear = 0;
+        private volatile int totalPages = 0;
+        private volatile int totalMeets = 0;
+        private volatile int processedMeets = 0;
+        private volatile double avgTimePerMeetMs = 0.0;
+        private volatile long etaSeconds = 0;
+        private volatile long startTimeMs = 0;
+        private volatile long elapsedSeconds = 0;
+        private volatile String currentMeetName = "";
+        private volatile int savedAthletes = 0;
+        private volatile String message = "";
+        private volatile String error = null;
+
+        public void reset() {
+            cancelRequested.set(false);
+            stage = "IDLE";
+            startYear = 0;
+            totalPages = 0;
+            totalMeets = 0;
+            processedMeets = 0;
+            avgTimePerMeetMs = 0.0;
+            etaSeconds = 0;
+            startTimeMs = 0;
+            elapsedSeconds = 0;
+            currentMeetName = "";
+            savedAthletes = 0;
+            message = "";
+            error = null;
+        }
+
+        public java.util.concurrent.atomic.AtomicBoolean getRunning() { return running; }
+        public boolean isRunning() { return running.get(); }
+        public void setRunning(boolean val) { running.set(val); }
+        public boolean isCancelRequested() { return cancelRequested.get(); }
+        public void requestCancel() { cancelRequested.set(true); }
+
+        public String getStage() { return stage; }
+        public void setStage(String stage) { this.stage = stage; }
+        public int getStartYear() { return startYear; }
+        public void setStartYear(int startYear) { this.startYear = startYear; }
+        public int getTotalPages() { return totalPages; }
+        public void setTotalPages(int totalPages) { this.totalPages = totalPages; }
+        public int getTotalMeets() { return totalMeets; }
+        public void setTotalMeets(int totalMeets) { this.totalMeets = totalMeets; }
+        public int getProcessedMeets() { return processedMeets; }
+        public void setProcessedMeets(int processedMeets) { this.processedMeets = processedMeets; }
+        public double getAvgTimePerMeetMs() { return avgTimePerMeetMs; }
+        public void setAvgTimePerMeetMs(double avgTimePerMeetMs) { this.avgTimePerMeetMs = avgTimePerMeetMs; }
+        public long getEtaSeconds() { return etaSeconds; }
+        public void setEtaSeconds(long etaSeconds) { this.etaSeconds = etaSeconds; }
+        public long getStartTimeMs() { return startTimeMs; }
+        public void setStartTimeMs(long startTimeMs) { this.startTimeMs = startTimeMs; }
+        public long getElapsedSeconds() { return elapsedSeconds; }
+        public void setElapsedSeconds(long elapsedSeconds) { this.elapsedSeconds = elapsedSeconds; }
+        public String getCurrentMeetName() { return currentMeetName; }
+        public void setCurrentMeetName(String currentMeetName) { this.currentMeetName = currentMeetName; }
+        public int getSavedAthletes() { return savedAthletes; }
+        public void setSavedAthletes(int savedAthletes) { this.savedAthletes = savedAthletes; }
+        public String getMessage() { return message; }
+        public void setMessage(String message) { this.message = message; }
+        public String getError() { return error; }
+        public void setError(String error) { this.error = error; }
+
+        public BulkScrapeStatusResponse toResponse() {
+            long elapsed = (startTimeMs > 0 && running.get())
+                    ? (System.currentTimeMillis() - startTimeMs) / 1000
+                    : this.elapsedSeconds;
+            int remaining = Math.max(0, totalMeets - processedMeets);
+            return new BulkScrapeStatusResponse(
+                    running.get(),
+                    stage,
+                    startYear,
+                    totalPages,
+                    totalMeets,
+                    processedMeets,
+                    remaining,
+                    avgTimePerMeetMs,
+                    etaSeconds,
+                    elapsed,
+                    currentMeetName,
+                    savedAthletes,
+                    message,
+                    error
+            );
+        }
     }
 }

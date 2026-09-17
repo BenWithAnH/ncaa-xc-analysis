@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 import { useLoadingTimer } from '../composables/useLoadingTimer';
 
@@ -12,14 +12,77 @@ const errorMsg = ref('');
 const scrapeMsg = ref('');
 const emit = defineEmits(['view-meet']);
 const startYear = ref(2026); // Default year
+const currentPage = ref(1);
+const hasNextPage = ref(true);
 
-const fetchMeets = async () => {
+const scrapeEtaText = ref('');
+const scrapeProgressText = ref('');
+let scrapePollInterval = null;
+
+const formatEta = (seconds) => {
+  if (seconds === undefined || seconds === null || seconds < 0) return '';
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (m < 60) return `${m}m ${s}s`;
+  const h = Math.floor(m / 60);
+  const remM = m % 60;
+  return `${h}h ${remM}m`;
+};
+
+const pollBulkScrapeStatus = async () => {
+  try {
+    const res = await axios.get('http://localhost:8080/api/meets/bulk-scrape/status');
+    const data = res.data;
+    if (data.running) {
+      if (!scrapeTimer.isLoading.value) {
+        scrapeTimer.start();
+      }
+      if (data.stage === 'INITIAL_COUNT') {
+        scrapeEtaText.value = 'Calculating ETA...';
+        scrapeProgressText.value = '';
+      } else if (data.stage === 'Loading...') {
+        scrapeEtaText.value = formatEta(data.etaSeconds);
+        const avgStr = data.avgTimePerMeetMs > 0 ? `${(data.avgTimePerMeetMs / 1000).toFixed(1)}s/meet` : '';
+        scrapeProgressText.value = `${data.processedMeets}/${data.totalMeets} meets${avgStr ? ' (~' + avgStr + ')' : ''}`;
+      }
+    } else {
+      if (scrapePollInterval) {
+        clearInterval(scrapePollInterval);
+        scrapePollInterval = null;
+      }
+      if (scrapeTimer.isLoading.value) {
+        scrapeTimer.stop();
+      }
+      scrapeEtaText.value = '';
+      scrapeProgressText.value = '';
+      if (data.stage === 'COMPLETED') {
+        scrapeMsg.value = data.message || 'Bulk load completed.';
+      } else if (data.stage === 'FAILED') {
+        errorMsg.value = data.error || 'Bulk load failed.';
+      } else if (data.stage === 'CANCELLED') {
+        scrapeMsg.value = data.message || 'Bulk load cancelled.';
+      }
+    }
+  } catch (err) {
+    console.error('Error polling bulk load status:', err);
+  }
+};
+
+const fetchMeets = async (page = 1) => {
   fetchTimer.start();
   errorMsg.value = '';
   scrapeMsg.value = '';
   try {
-    const response = await axios.get('http://localhost:8080/api/meets?maxPages=1');
-    meets.value = response.data;
+    const response = await axios.get(`http://localhost:8080/api/meets?page=${page}`);
+    if (page > 1 && (!response.data || response.data.length === 0)) {
+      scrapeMsg.value = `No more meets found on page ${page}.`;
+      hasNextPage.value = false;
+    } else {
+      meets.value = response.data;
+      currentPage.value = page;
+      hasNextPage.value = response.data && response.data.length > 0;
+    }
   } catch (error) {
     console.error("Error getting meet list:", error);
     errorMsg.value = 'Failed to load meets.';
@@ -28,20 +91,53 @@ const fetchMeets = async () => {
   }
 };
 
+const nextPage = () => {
+  fetchMeets(currentPage.value + 1);
+};
+
+const prevPage = () => {
+  if (currentPage.value > 1) {
+    fetchMeets(currentPage.value - 1);
+  }
+};
+
 const bulkScrape = async () => {
   scrapeTimer.start();
   errorMsg.value = '';
   scrapeMsg.value = '';
+  scrapeEtaText.value = 'Calculating ETA...';
+  scrapeProgressText.value = 'Initializing search...';
   try {
-    const response = await axios.post(`http://localhost:8080/api/meets/bulk-scrape-since-year?startYear=${startYear.value}&maxPages=200`);
-    scrapeMsg.value = response.data;
+    await axios.post(`http://localhost:8080/api/meets/bulk-scrape-since-year?startYear=${startYear.value}&maxPages=200`);
+    if (scrapePollInterval) clearInterval(scrapePollInterval);
+    scrapePollInterval = setInterval(pollBulkScrapeStatus, 1000);
+    pollBulkScrapeStatus();
   } catch (error) {
-    console.error("Error bulk loading:", error);
-    errorMsg.value = 'Failed to bulk load meets.';
-  } finally {
+    console.error("Error starting bulk load:", error);
+    errorMsg.value = 'Failed to start bulk load.';
     scrapeTimer.stop();
+    scrapeEtaText.value = '';
+    scrapeProgressText.value = '';
   }
 };
+
+const cancelBulkScrape = async () => {
+  try {
+    await axios.post('http://localhost:8080/api/meets/bulk-scrape/cancel');
+  } catch (err) {
+    console.error('Error cancelling bulk scrape:', err);
+  }
+};
+
+onMounted(() => {
+  pollBulkScrapeStatus();
+});
+
+onUnmounted(() => {
+  if (scrapePollInterval) {
+    clearInterval(scrapePollInterval);
+  }
+});
 </script>
 
 <template>
@@ -49,20 +145,25 @@ const bulkScrape = async () => {
     <header>
       <h2>XC Meets</h2>
       <div class="actions">
-        <button @click="fetchMeets" :disabled="isLoading">
+        <button @click="fetchMeets(1)" :disabled="isLoading">
           {{ fetchTimer.isLoading.value ? `Loading (${fetchTimer.elapsedSeconds.value}s)...` : 'Load Meet List' }}
         </button>
         <div class="scrape-actions">
           <input type="number" v-model="startYear" class="year-input" placeholder="Year (e.g. 2023)" />
           <button @click="bulkScrape" :disabled="isLoading">
-            {{ scrapeTimer.isLoading.value ? `Scraping (${scrapeTimer.elapsedSeconds.value}s)...` : 'Bulk Scrape' }}
+            {{ scrapeTimer.isLoading.value ? `Scraping (${scrapeTimer.elapsedSeconds.value}s${scrapeEtaText ? ' | ETA: ' + scrapeEtaText : ''})...` : 'Bulk Scrape' }}
+          </button>
+          <button v-if="scrapeTimer.isLoading.value" @click="cancelBulkScrape" class="cancel-btn" title="Cancel bulk scrape">
+            ✕ Cancel
           </button>
         </div>
       </div>
     </header>
 
     <div v-if="fetchTimer.isLoading.value" class="status-loading">Loading meets (for {{ fetchTimer.elapsedSeconds.value }}s)...</div>
-    <div v-if="scrapeTimer.isLoading.value" class="status-loading">Bulk loading meets since {{ startYear }} (for {{ scrapeTimer.elapsedSeconds.value }}s)...</div>
+    <div v-if="scrapeTimer.isLoading.value" class="status-loading">
+      Bulk loading meets since {{ startYear }} (for {{ scrapeTimer.elapsedSeconds.value }}s<span v-if="scrapeEtaText"> | ETA: {{ scrapeEtaText }}</span><span v-if="scrapeProgressText"> - {{ scrapeProgressText }}</span>)...
+    </div>
     <div v-if="errorMsg" class="error">{{ errorMsg }}</div>
     <div v-if="scrapeMsg" class="success">{{ scrapeMsg }}</div>
     
@@ -84,6 +185,24 @@ const bulkScrape = async () => {
         </tr>
       </tbody>
     </table>
+
+    <div v-if="meets.length" class="pagination-controls">
+      <button 
+        @click="prevPage" 
+        :disabled="currentPage <= 1 || isLoading"
+        class="page-btn"
+      >
+        &larr; Previous Page
+      </button>
+      <span class="page-indicator">Page {{ currentPage }}</span>
+      <button 
+        @click="nextPage" 
+        :disabled="isLoading || !hasNextPage"
+        class="page-btn"
+      >
+        Next Page &rarr;
+      </button>
+    </div>
 
     <p v-else-if="!isLoading && meets.length === 0" class="empty-state text-muted">
       No meets loaded yet. Click the button to load meets.
@@ -138,5 +257,51 @@ header {
 .success {
   color: green;
   margin-bottom: 1rem;
+}
+.pagination-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid #e5e7eb;
+}
+.page-btn {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background-color: #fff;
+  transition: all 0.15s ease;
+}
+.page-btn:hover:not(:disabled) {
+  background-color: #f3f4f6;
+  border-color: #9ca3af;
+}
+.page-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.page-indicator {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+}
+.cancel-btn {
+  background-color: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+  border-radius: 4px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.cancel-btn:hover {
+  background-color: #fecaca;
+  color: #991b1b;
 }
 </style>
