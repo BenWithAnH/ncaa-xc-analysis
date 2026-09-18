@@ -5,7 +5,7 @@ echo  Recalculating and Overwriting Ratings in PostgreSQL
 echo ========================================================
 
 cd /d "%~dp0demo"
-call mvn test -Dtest=RunPriorRatingsDemoTest
+call mvn clean test -Dtest=RunPriorRatingsDemoTest
 
 echo.
 echo Completed recalculation run.

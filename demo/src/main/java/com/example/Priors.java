@@ -224,7 +224,7 @@ public class Priors {
 
             if (!allPoints.isEmpty()) {
                 allPoints.sort((a, b) -> Double.compare(b, a));
-                int k = Math.min(3, allPoints.size());
+                int k = (int) Math.ceil(allPoints.size() * 2.0 / 3.0);
                 double sum = 0.0;
                 for (int i = 0; i < k; i++) {
                     sum += allPoints.get(i);
