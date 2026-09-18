@@ -100,19 +100,33 @@ public class ScrapePriors {
         if (endLink == null || endLink.trim().isEmpty()) {
             return null;
         }
-        String userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
-        try {
-            String url;
-            if (endLink.startsWith("http://") || endLink.startsWith("https://")) {
-                url = endLink;
-            } else {
-                url = "https://www.tfrrs.org" + (endLink.startsWith("/") ? "" : "/") + endLink;
+        String userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+        String url = (endLink.startsWith("http://") || endLink.startsWith("https://"))
+                ? endLink
+                : "https://www.tfrrs.org" + (endLink.startsWith("/") ? "" : "/") + endLink;
+
+        int maxRetries = 2;
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                return Jsoup.connect(url)
+                        .userAgent(userAgent)
+                        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                        .header("Accept-Language", "en-US,en;q=0.9")
+                        .timeout(15000)
+                        .maxBodySize(0)
+                        .get();
+            } catch (IOException e) {
+                if (attempt == maxRetries) {
+                    System.err.println("Warning: Failed to fetch athlete page (" + url + "): " + e.getMessage());
+                } else {
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        return null;
+                    }
+                }
             }
-            return Jsoup.connect(url)
-                    .userAgent(userAgent)
-                    .get();
-        } catch (IOException e) {
-            e.printStackTrace();
         }
         return null;
     }

@@ -159,4 +159,53 @@ class RaceServiceTest {
         assertTrue(raceService.getAthleteResults(null).isEmpty());
         assertTrue(raceService.getAthleteResults("   ").isEmpty());
     }
+
+    @Test
+    void testGetMeetRatingsForAthletes() {
+        String link = "https://tfrrs.org/athletes/123";
+        RaceResult rr1 = new RaceResult(link, "Nico Young", "NCAA Championship", "Nov 18, 2023", "28:50.0", 175.0);
+        RaceResult rr2 = new RaceResult(link, "Nico Young", "Nuttycombe Invite", "Oct 13, 2023", "23:20.0", 172.5);
+
+        when(raceResultRepository.findByAthleteNameIgnoreCase("Nico Young")).thenReturn(List.of(rr1, rr2));
+
+        var resultMap = raceService.getMeetRatingsForAthletes(List.of("Nico Young"));
+
+        assertNotNull(resultMap);
+        assertTrue(resultMap.containsKey("Nico Young"));
+        var nicoMeets = resultMap.get("Nico Young");
+        assertEquals(2, nicoMeets.size());
+        assertEquals("NCAA Championship", nicoMeets.get(0).meetName());
+        assertEquals(175.0, nicoMeets.get(0).rating());
+        assertEquals("Nuttycombe Invite", nicoMeets.get(1).meetName());
+        assertEquals(172.5, nicoMeets.get(1).rating());
+
+        // Edge case: null or empty list
+        assertTrue(raceService.getMeetRatingsForAthletes(null).isEmpty());
+        assertTrue(raceService.getMeetRatingsForAthletes(List.of()).isEmpty());
+    }
+
+    @Test
+    void testGetPriorRatingsForMeetAthletes() {
+        String meetUrl = "https://tfrrs.org/results/xc/12345/Test_Meet";
+        String link = "https://tfrrs.org/athletes/456";
+        RaceResult priorResult = new RaceResult(link, "Parker Valby", "SEC Championship", "Oct 27, 2023", "18:30.0", 180.0);
+
+        // Simulate meet athletes existing in DB
+        RaceResult currentMeetResult = new RaceResult(link, "Parker Valby", "Test Meet", "Nov 10, 2023", "18:40.0", null);
+        when(raceResultRepository.findByMeetName("Test Meet")).thenReturn(List.of(currentMeetResult));
+        when(raceResultRepository.findByAthleteLink(link)).thenReturn(List.of(priorResult, currentMeetResult));
+
+        var resultMap = raceService.getPriorRatingsForMeetAthletes(meetUrl);
+
+        assertNotNull(resultMap);
+        assertTrue(resultMap.containsKey("Parker Valby"));
+        var meets = resultMap.get("Parker Valby");
+        assertEquals(2, meets.size());
+        assertEquals("SEC Championship", meets.get(0).meetName());
+        assertEquals(180.0, meets.get(0).rating());
+
+        // Edge case: null or empty meet url
+        assertTrue(raceService.getPriorRatingsForMeetAthletes(null).isEmpty());
+        assertTrue(raceService.getPriorRatingsForMeetAthletes("   ").isEmpty());
+    }
 }

@@ -70,6 +70,13 @@ public class Controller {
      */
     @PostMapping("/race/rate")
     public RaceResultResponse rateRace(@RequestBody RaceRequest request) {
+        if (request != null && request.isOverwrite()) {
+            return raceService.scrapeAndRateRace(
+                    request.getMeetUrl(),
+                    request.getMeetName(),
+                    request.getMeetDate(),
+                    true);
+        }
         return raceService.scrapeAndRateRace(
                 request.getMeetUrl(),
                 request.getMeetName(),

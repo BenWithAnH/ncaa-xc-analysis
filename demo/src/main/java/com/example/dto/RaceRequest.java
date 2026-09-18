@@ -6,14 +6,20 @@ public class RaceRequest {
     private String meetUrl;
     private String meetName;
     private String meetDate;
+    private boolean overwrite;
 
     public RaceRequest() {
     }
 
     public RaceRequest(String meetUrl, String meetName, String meetDate) {
+        this(meetUrl, meetName, meetDate, false);
+    }
+
+    public RaceRequest(String meetUrl, String meetName, String meetDate, boolean overwrite) {
         this.meetUrl = meetUrl;
         this.meetName = meetName;
         this.meetDate = meetDate;
+        this.overwrite = overwrite;
     }
 
     public String getMeetUrl() {
@@ -38,5 +44,13 @@ public class RaceRequest {
 
     public void setMeetDate(String meetDate) {
         this.meetDate = meetDate;
+    }
+
+    public boolean isOverwrite() {
+        return overwrite;
+    }
+
+    public void setOverwrite(boolean overwrite) {
+        this.overwrite = overwrite;
     }
 }

@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import com.example.scraper.RaceScraper.Athlete;
 import com.example.repository.AthleteRepository;
@@ -16,7 +18,7 @@ public class GetCAF {
     // 1. CONSTANTS
     public static final double BASE_SCORE = 1000.0;
     private static final double RATING_CURVE_EXPONENT = 0.5;
-    private static final int RATE_LIMIT_MS = 50;
+    private static final int RATE_LIMIT_MS = 250;
 
     public record AthleteRating(String name, String time, String link, double rating, double priorRating) {
     }
@@ -31,6 +33,10 @@ public class GetCAF {
     }
 
     public ArrayList<AthleteRating> getCAF(List<Athlete> athletes, double raceDistanceMeters) {
+        return getCAF(athletes, raceDistanceMeters, false);
+    }
+
+    public ArrayList<AthleteRating> getCAF(List<Athlete> athletes, double raceDistanceMeters, boolean forceRecalculatePriors) {
         ratings.clear();
 
         if (athletes == null || athletes.isEmpty()) {
@@ -56,11 +62,18 @@ public class GetCAF {
         List<com.example.entity.Athlete> newlyScrapedAthletes = Collections.synchronizedList(new ArrayList<>());
         java.util.Set<String> newlyScrapedLinks = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
-        List<CompletableFuture<Void>> futures = athletes.stream()
-                .map(athlete -> CompletableFuture.runAsync(() -> processAthlete(athlete, raceDistanceMeters, scraper, priorsCalculator, validRatios, preRatings, cachedMap, newlyScrapedAthletes, newlyScrapedLinks)))
-                .collect(Collectors.toList());
+        ExecutorService executor = Executors.newFixedThreadPool(4);
+        try {
+            List<CompletableFuture<Void>> futures = athletes.stream()
+                    .map(athlete -> CompletableFuture.runAsync(
+                            () -> processAthlete(athlete, raceDistanceMeters, scraper, priorsCalculator, validRatios, preRatings, cachedMap, newlyScrapedAthletes, newlyScrapedLinks, forceRecalculatePriors),
+                            executor))
+                    .collect(Collectors.toList());
 
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        } finally {
+            executor.shutdown();
+        }
 
         if (!newlyScrapedAthletes.isEmpty() && athleteRepository != null) {
             athleteRepository.saveAll(newlyScrapedAthletes);
@@ -85,12 +98,13 @@ public class GetCAF {
         return athleteRatingsList;
     }
 
-    private void processAthlete(Athlete athlete, double raceDistanceMeters, ScrapePriors scraper, Priors priorsCalculator, List<Double> validRatios, List<AthleteRating> preRatings, java.util.Map<String, com.example.entity.Athlete> cachedMap, List<com.example.entity.Athlete> newlyScrapedAthletes, java.util.Set<String> newlyScrapedLinks) {
+    private void processAthlete(Athlete athlete, double raceDistanceMeters, ScrapePriors scraper, Priors priorsCalculator, List<Double> validRatios, List<AthleteRating> preRatings, java.util.Map<String, com.example.entity.Athlete> cachedMap, List<com.example.entity.Athlete> newlyScrapedAthletes, java.util.Set<String> newlyScrapedLinks, boolean forceRecalculatePriors) {
         double priorRating = 0.0;
-        
+        com.example.entity.Athlete cachedAthlete = null;
+
         if (athlete.link() != null && !athlete.link().isEmpty()) {
-            com.example.entity.Athlete cachedAthlete = cachedMap.get(athlete.link());
-            if (cachedAthlete != null && cachedAthlete.getRating() != null && cachedAthlete.getRating() > 0) {
+            cachedAthlete = cachedMap.get(athlete.link());
+            if (!forceRecalculatePriors && cachedAthlete != null && cachedAthlete.getRating() != null && cachedAthlete.getRating() > 0) {
                 priorRating = cachedAthlete.getRating();
             }
         }
@@ -111,8 +125,12 @@ public class GetCAF {
 
                 // Save to list for bulk insert without duplicates
                 if (priorRating > 0.0 && newlyScrapedLinks.add(athlete.link())) {
-                    com.example.entity.Athlete newAthlete = new com.example.entity.Athlete(athlete.link(), athlete.name(), priorRating);
-                    newlyScrapedAthletes.add(newAthlete);
+                    com.example.entity.Athlete athleteToSave = (cachedAthlete != null) ? cachedAthlete : new com.example.entity.Athlete(athlete.link(), athlete.name(), priorRating);
+                    athleteToSave.setRating(priorRating);
+                    if (athlete.time() != null && !athlete.time().trim().isEmpty()) {
+                        athleteToSave.setBestTime(athlete.time().trim());
+                    }
+                    newlyScrapedAthletes.add(athleteToSave);
                 }
             }
         }

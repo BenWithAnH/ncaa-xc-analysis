@@ -191,7 +191,7 @@ public class RaceService {
                 if (existingResult != null) {
                     alreadyInDb++;
                     if (overwrite) {
-                        existingResult.setPriorRating(r.priorRating() > 0.0 ? r.priorRating() : r.rating());
+                        existingResult.setPriorRating(r.rating());
                         existingResult.setRaceTime(r.time());
                         existingResult.setAthleteName(r.name());
                         existingResult.setRaceDate(actualDate);
@@ -204,7 +204,7 @@ public class RaceService {
                             actualMeetName,
                             actualDate,
                             r.time(),
-                            r.priorRating() > 0.0 ? r.priorRating() : r.rating()
+                            r.rating() 
                     );
                     resultsToSave.add(result);
                     existingResultMap.put(r.link(), result);

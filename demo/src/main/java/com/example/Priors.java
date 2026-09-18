@@ -21,13 +21,13 @@ public class Priors {
             "5000m",
             "10000m");
 
-
     public static double parseTimeToSeconds(String timeStr) {
         if (timeStr == null || timeStr.trim().isEmpty()) {
             return 0.0;
         }
         String clean = timeStr.trim().replace(",", "");
-        if (clean.equalsIgnoreCase("dnf") || clean.equalsIgnoreCase("dns") || clean.equalsIgnoreCase("nt") || clean.equalsIgnoreCase("dq") || clean.equalsIgnoreCase("fs") || clean.equalsIgnoreCase("scr")) {
+        if (clean.equalsIgnoreCase("dnf") || clean.equalsIgnoreCase("dns") || clean.equalsIgnoreCase("nt")
+                || clean.equalsIgnoreCase("dq") || clean.equalsIgnoreCase("fs") || clean.equalsIgnoreCase("scr")) {
             return 0.0;
         }
         // Remove trailing extraneous characters like 'h', 'm', '(PR)', etc.
@@ -115,8 +115,11 @@ public class Priors {
         return null;
     }
 
-
     public static long calculatePoints(double seconds, List<Double> coefs) {
+        return calculatePoints(seconds, coefs, null);
+    }
+
+    public static long calculatePoints(double seconds, List<Double> coefs, String eventName) {
         if (seconds <= 0.0 || coefs == null || coefs.size() < 3) {
             return 0;
         }
@@ -126,9 +129,21 @@ public class Priors {
 
         double pointsVal = a * seconds * seconds + b * seconds + c;
         long points = Math.round(pointsVal);
-        return Math.max(0, points);
+        points = Math.max(0, points);
+
+        if (points > 0 && isLongDistance(eventName)) {
+            points = Math.round(points * 1.0);
+        }
+        return points;
     }
 
+    private static boolean isLongDistance(String eventName) {
+        if (eventName == null) {
+            return false;
+        }
+        String clean = eventName.trim().toLowerCase();
+        return clean.equals("5000m") || clean.equals("10000m") || clean.equals("5k") || clean.equals("10k");
+    }
 
     public void findBest(ArrayList<String> prs, String gender) {
         try (Reader reader = getCoefficientsReader()) {
@@ -157,7 +172,7 @@ public class Priors {
 
                 if (seconds > 0) {
                     List<Double> coefs = genderCoefs.get(eventName);
-                    long points = calculatePoints(seconds, coefs);
+                    long points = calculatePoints(seconds, coefs, eventName);
 
                     if (points > maxPoints) {
                         maxPoints = points;
@@ -170,7 +185,6 @@ public class Priors {
             e.printStackTrace();
         }
     }
-
 
     public double getPriorRating(ArrayList<String> prs, String gender) {
         if (prs == null || prs.isEmpty() || gender == null) {
@@ -201,7 +215,7 @@ public class Priors {
 
                 if (seconds > 0) {
                     List<Double> coefs = genderCoefs.get(eventName);
-                    long points = calculatePoints(seconds, coefs);
+                    long points = calculatePoints(seconds, coefs, eventName);
                     if (points > 0) {
                         allPoints.add((double) points);
                     }
@@ -210,7 +224,7 @@ public class Priors {
 
             if (!allPoints.isEmpty()) {
                 allPoints.sort((a, b) -> Double.compare(b, a));
-                int k = (int) Math.ceil(allPoints.size() * 2.0 / 3.0);
+                int k = Math.min(3, allPoints.size());
                 double sum = 0.0;
                 for (int i = 0; i < k; i++) {
                     sum += allPoints.get(i);

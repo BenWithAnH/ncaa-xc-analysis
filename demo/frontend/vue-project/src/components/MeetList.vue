@@ -38,13 +38,19 @@ const pollBulkScrapeStatus = async () => {
       if (!scrapeTimer.isLoading.value) {
         scrapeTimer.start();
       }
+      if (!scrapePollInterval) {
+        scrapePollInterval = setInterval(pollBulkScrapeStatus, 1000);
+      }
       if (data.stage === 'INITIAL_COUNT') {
         scrapeEtaText.value = 'Calculating ETA...';
-        scrapeProgressText.value = '';
-      } else if (data.stage === 'Loading...') {
-        scrapeEtaText.value = formatEta(data.etaSeconds);
+        scrapeProgressText.value = data.message || 'Finding total meets...';
+      } else if (data.stage === 'SCRAPING') {
+        scrapeEtaText.value = data.etaSeconds > 0 ? formatEta(data.etaSeconds) : 'Calculating ETA...';
         const avgStr = data.avgTimePerMeetMs > 0 ? `${(data.avgTimePerMeetMs / 1000).toFixed(1)}s/meet` : '';
-        scrapeProgressText.value = `${data.processedMeets}/${data.totalMeets} meets${avgStr ? ' (~' + avgStr + ')' : ''}`;
+        let progress = `${data.processedMeets}/${data.totalMeets} meets`;
+        if (avgStr) progress += ` (~${avgStr})`;
+        if (data.currentMeetName) progress += ` - ${data.currentMeetName}`;
+        scrapeProgressText.value = progress;
       }
     } else {
       if (scrapePollInterval) {
@@ -130,6 +136,7 @@ const cancelBulkScrape = async () => {
 };
 
 onMounted(() => {
+  fetchMeets(1);
   pollBulkScrapeStatus();
 });
 

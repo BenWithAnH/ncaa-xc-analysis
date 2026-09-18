@@ -10,4 +10,6 @@ import java.util.List;
 public interface RaceResultRepository extends JpaRepository<RaceResult, Long> {
     List<RaceResult> findByAthleteLink(String athleteLink);
     List<RaceResult> findByMeetName(String meetName);
+    List<RaceResult> findByAthleteNameIgnoreCase(String athleteName);
+    List<RaceResult> findByAthleteNameContainingIgnoreCase(String athleteName);
 }
